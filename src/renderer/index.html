@@ -103,8 +103,12 @@
         <section class="view active" id="view-tracks">
           <div class="view-header">
             <h1>Toutes les pistes</h1>
-            <div class="view-controls">
-              <div class="search-box">
+            <div class="view-header-actions">
+              <button
+                class="btn-secondary"
+                id="btn-refresh-tracks"
+                title="Rafraîchir toutes les playlists"
+              >
                 <svg
                   width="16"
                   height="16"
@@ -113,26 +117,101 @@
                   stroke="currentColor"
                   stroke-width="2"
                 >
-                  <circle cx="11" cy="11" r="8" />
-                  <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                  <polyline points="23 4 23 10 17 10" />
+                  <polyline points="1 20 1 14 7 14" />
+                  <path
+                    d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"
+                  />
                 </svg>
-                <input
-                  type="text"
-                  id="search-input"
-                  placeholder="Rechercher une piste..."
-                />
-              </div>
-              <select id="filter-source" class="select-control">
-                <option value="all">Toutes les sources</option>
-                <option value="spotify">Spotify</option>
-                <option value="soundcloud">SoundCloud</option>
-              </select>
-              <select id="sort-by" class="select-control">
-                <option value="recent">Plus récent</option>
-                <option value="title">Titre A-Z</option>
-                <option value="artist">Artiste A-Z</option>
-                <option value="duration">Durée</option>
-              </select>
+              </button>
+              <button
+                class="btn-secondary"
+                id="btn-open-library"
+                title="Ouvrir le dossier bibliothèque"
+              >
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <path
+                    d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"
+                  />
+                </svg>
+              </button>
+              <button
+                class="btn-primary btn-download-all"
+                id="btn-download-all"
+                title="Télécharger toutes les pistes en FLAC"
+              >
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
+                  <polyline points="7 10 12 15 17 10" />
+                  <line x1="12" y1="15" x2="12" y2="3" />
+                </svg>
+                Tout télécharger
+              </button>
+            </div>
+          </div>
+          <div class="view-controls">
+            <div class="search-box">
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <circle cx="11" cy="11" r="8" />
+                <line x1="21" y1="21" x2="16.65" y2="16.65" />
+              </svg>
+              <input
+                type="text"
+                id="search-input"
+                placeholder="Rechercher une piste..."
+              />
+            </div>
+            <select id="filter-source" class="select-control">
+              <option value="all">Toutes les sources</option>
+              <option value="spotify">Spotify</option>
+              <option value="soundcloud">SoundCloud</option>
+              <option value="local">Local</option>
+            </select>
+            <select id="sort-by" class="select-control">
+              <option value="recent">Plus récent</option>
+              <option value="title">Titre A-Z</option>
+              <option value="artist">Artiste A-Z</option>
+              <option value="duration">Durée</option>
+            </select>
+          </div>
+
+          <!-- Download progress bar -->
+          <div class="download-bar" id="download-bar" style="display: none">
+            <div class="download-bar-info">
+              <span id="dl-status-text">Préparation...</span>
+              <span id="dl-progress-text">0%</span>
+            </div>
+            <div class="download-bar-track">
+              <div
+                class="download-bar-fill"
+                id="dl-progress-fill"
+                style="width: 0%"
+              ></div>
+            </div>
+            <div class="download-bar-details">
+              <span id="dl-queue-text"></span>
+              <span id="dl-speed-text"></span>
             </div>
           </div>
 
@@ -143,6 +222,7 @@
             <span class="col-album">Album</span>
             <span class="col-source">Source</span>
             <span class="col-duration">Durée</span>
+            <span class="col-dl">DL</span>
           </div>
 
           <div class="track-list" id="track-list">
@@ -169,20 +249,42 @@
         <section class="view" id="view-playlists">
           <div class="view-header">
             <h1>Playlists</h1>
-            <button class="btn-primary" id="btn-add-playlist">
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
+            <div class="view-header-actions">
+              <button
+                class="btn-secondary"
+                id="btn-refresh-playlists"
+                title="Rafraîchir toutes les playlists"
               >
-                <line x1="12" y1="5" x2="12" y2="19" />
-                <line x1="5" y1="12" x2="19" y2="12" />
-              </svg>
-              Ajouter une playlist
-            </button>
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <polyline points="23 4 23 10 17 10" />
+                  <polyline points="1 20 1 14 7 14" />
+                  <path
+                    d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"
+                  />
+                </svg>
+              </button>
+              <button class="btn-primary" id="btn-add-playlist">
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <line x1="12" y1="5" x2="12" y2="19" />
+                  <line x1="5" y1="12" x2="19" y2="12" />
+                </svg>
+                Ajouter une playlist
+              </button>
+            </div>
           </div>
 
           <!-- Add playlist modal -->

@@ -3,6 +3,7 @@ const path = require('path');
 const Store = require('electron-store');
 const SpotifyService = require('../services/spotify');
 const SoundCloudService = require('../services/soundcloud');
+const DownloadService = require('../services/download');
 
 const store = new Store({
   defaults: {
@@ -17,6 +18,7 @@ const store = new Store({
 });
 
 let mainWindow;
+let downloadService;
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -136,6 +138,51 @@ ipcMain.handle('add-playlist', async (_, url) => {
   }
 });
 
+ipcMain.handle('refresh-playlists', async () => {
+  const playlists = store.get('playlists');
+  const refreshed = [];
+
+  for (const pl of playlists) {
+    try {
+      let freshData;
+      if (pl.source === 'spotify') {
+        const spotifyConfig = store.get('spotify');
+        if (!spotifyConfig.clientId || !spotifyConfig.clientSecret) continue;
+        const spotify = new SpotifyService(spotifyConfig.clientId, spotifyConfig.clientSecret);
+        freshData = await spotify.getPlaylist(pl.url);
+      } else if (pl.source === 'soundcloud') {
+        const sc = new SoundCloudService();
+        freshData = await sc.getPlaylist(pl.url);
+      } else {
+        refreshed.push(pl);
+        continue;
+      }
+      freshData.addedAt = pl.addedAt; // Keep original add date
+      refreshed.push(freshData);
+    } catch {
+      refreshed.push(pl); // Keep old data on error
+    }
+  }
+
+  store.set('playlists', refreshed);
+
+  // Rebuild unified track list
+  const allTracks = [];
+  const seen = new Set();
+  for (const pl of refreshed) {
+    for (const track of pl.tracks) {
+      const key = `${track.title.toLowerCase()}|${track.artist.toLowerCase()}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        allTracks.push(track);
+      }
+    }
+  }
+  store.set('tracks', allTracks);
+
+  return { playlists: refreshed, totalTracks: allTracks.length };
+});
+
 ipcMain.handle('remove-playlist', (_, playlistId) => {
   let playlists = store.get('playlists');
   const playlist = playlists.find(p => p.id === playlistId);
@@ -158,7 +205,19 @@ ipcMain.handle('remove-playlist', (_, playlistId) => {
 
 // Tracks
 ipcMain.handle('get-tracks', (_, { search, source, sortBy } = {}) => {
-  let tracks = store.get('tracks');
+  let tracks = [...store.get('tracks')];
+
+  // Merge local (orphan) tracks from library scan
+  if (downloadService && downloadService._cacheReady) {
+    const localTracks = downloadService.localTracks || [];
+    // Avoid duplicates by checking IDs
+    const existingIds = new Set(tracks.map(t => t.id));
+    for (const lt of localTracks) {
+      if (!existingIds.has(lt.id)) {
+        tracks.push(lt);
+      }
+    }
+  }
 
   if (search) {
     const q = search.toLowerCase();
@@ -190,11 +249,15 @@ ipcMain.handle('get-tracks', (_, { search, source, sortBy } = {}) => {
 ipcMain.handle('get-stats', () => {
   const playlists = store.get('playlists');
   const tracks = store.get('tracks');
+  const localCount = (downloadService && downloadService._cacheReady)
+    ? (downloadService.localTracks || []).length
+    : 0;
   return {
     totalPlaylists: playlists.length,
-    totalTracks: tracks.length,
+    totalTracks: tracks.length + localCount,
     spotifyTracks: tracks.filter(t => t.source === 'spotify').length,
-    soundcloudTracks: tracks.filter(t => t.source === 'soundcloud').length
+    soundcloudTracks: tracks.filter(t => t.source === 'soundcloud').length,
+    localTracks: localCount
   };
 });
 
@@ -202,3 +265,75 @@ ipcMain.handle('open-external', (_, url) => {
   const { shell } = require('electron');
   shell.openExternal(url);
 });
+
+// ─── Download ─────────────────────────────────────────────────
+
+function getDownloadService() {
+  const libPath = store.get('libraryPath');
+  const dataDir = path.join(app.getPath('userData'), 'kusic-data');
+  if (!downloadService) {
+    downloadService = new DownloadService(libPath, dataDir);
+    
+    // Forward events to renderer
+    downloadService.on('progress', (data) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('download-progress', data);
+      }
+    });
+    downloadService.on('track-complete', (data) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('download-track-complete', data);
+      }
+    });
+    downloadService.on('track-error', (data) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('download-track-error', data);
+      }
+    });
+    downloadService.on('status', (data) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('download-status', data);
+      }
+    });
+  } else {
+    downloadService.setLibraryPath(libPath);
+  }
+  return downloadService;
+}
+
+ipcMain.handle('download-track', async (_, track) => {
+  const svc = getDownloadService();
+  return await svc.downloadTrack(track);
+});
+
+ipcMain.handle('download-tracks', async (_, tracks) => {
+  const svc = getDownloadService();
+  return await svc.downloadTracks(tracks);
+});
+
+ipcMain.handle('download-check-ready', async () => {
+  try {
+    const svc = getDownloadService();
+    await svc.ensureReady();
+    const version = await svc.getVersion();
+    return { ready: true, version };
+  } catch (err) {
+    return { ready: false, error: err.message };
+  }
+});
+
+ipcMain.handle('open-library-folder', () => {
+  const { shell } = require('electron');
+  const libPath = store.get('libraryPath');
+  shell.openPath(libPath);
+});
+
+ipcMain.handle('get-download-statuses', async () => {
+  const svc = getDownloadService();
+  // Always re-scan library to rebuild in-memory cache from FLAC metadata
+  const tracks = store.get('tracks', []);
+  await svc.scanLibrary(tracks);
+  return svc.getDownloadStatuses();
+});
+
+

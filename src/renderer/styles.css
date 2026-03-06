@@ -173,11 +173,18 @@ a:hover { text-decoration: underline; }
   font-weight: 700;
 }
 
+.view-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 /* ─── Controls ──────────────────────────────────────────────── */
 .view-controls {
   display: flex;
   align-items: center;
   gap: 10px;
+  margin-bottom: 16px;
 }
 
 .search-box {
@@ -285,7 +292,7 @@ a:hover { text-decoration: underline; }
 /* ─── Track list ────────────────────────────────────────────── */
 .track-list-header {
   display: grid;
-  grid-template-columns: 40px 2fr 1.5fr 1.5fr 90px 60px;
+  grid-template-columns: 40px 2fr 1.5fr 1.5fr 90px 60px 44px;
   gap: 12px;
   padding: 8px 16px;
   font-size: 11px;
@@ -298,7 +305,7 @@ a:hover { text-decoration: underline; }
 
 .track-row {
   display: grid;
-  grid-template-columns: 40px 2fr 1.5fr 1.5fr 90px 60px;
+  grid-template-columns: 40px 2fr 1.5fr 1.5fr 90px 60px 44px;
   gap: 12px;
   padding: 10px 16px;
   align-items: center;
@@ -378,6 +385,11 @@ a:hover { text-decoration: underline; }
 .source-badge.soundcloud {
   background: rgba(255, 85, 0, 0.15);
   color: var(--soundcloud);
+}
+
+.source-badge.local {
+  background: rgba(160, 160, 255, 0.15);
+  color: #a0a0ff;
 }
 
 .track-duration {
@@ -669,4 +681,86 @@ a:hover { text-decoration: underline; }
 .track-list::-webkit-scrollbar-thumb {
   background: var(--bg-active);
   border-radius: 3px;
+}
+
+/* ─── Download bar ──────────────────────────────────────────── */
+.download-bar {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 16px;
+  margin-bottom: 16px;
+}
+
+.download-bar-info {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  margin-bottom: 8px;
+  color: var(--text-secondary);
+}
+
+.download-bar-track {
+  height: 6px;
+  background: var(--bg-tertiary);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.download-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent), #a78bfa);
+  border-radius: 3px;
+  transition: width 300ms ease;
+}
+
+.download-bar-details {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  margin-top: 6px;
+  color: var(--text-muted);
+}
+
+/* ─── Track download button ─────────────────────────────────── */
+.track-dl-btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: var(--radius);
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--transition);
+}
+
+.track-dl-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: rgba(108, 92, 231, 0.1);
+}
+
+.track-dl-btn.downloading {
+  border-color: var(--accent);
+  color: var(--accent);
+  pointer-events: none;
+}
+
+.track-dl-btn.downloaded {
+  border-color: var(--success);
+  color: var(--success);
+  pointer-events: none;
+}
+
+.track-dl-btn.error {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.btn-download-all svg {
+  flex-shrink: 0;
 }
