@@ -349,20 +349,12 @@ ipcMain.handle("slskd-search", async (_, query: string) => {
   return await api.search(query);
 });
 
-ipcMain.handle("slskd-get-search-state", async (_, searchId: string) => {
+ipcMain.handle("slskd-get-search-results", async (_, { searchId, includeFiles = true }: { searchId: string; includeFiles?: boolean }) => {
   if (!slskdManager || !slskdManager.isRunning) {
     throw new Error("slskd n'est pas démarré");
   }
   const api = slskdManager.getAPI();
-  return await api.getSearchState(searchId);
-});
-
-ipcMain.handle("slskd-get-search-results", async (_, searchId: string) => {
-  if (!slskdManager || !slskdManager.isRunning) {
-    throw new Error("slskd n'est pas démarré");
-  }
-  const api = slskdManager.getAPI();
-  return await api.getSearchResults(searchId);
+  return await api.getSearchResults(searchId, includeFiles);
 });
 
 ipcMain.handle(

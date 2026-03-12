@@ -597,55 +597,58 @@ const slskdSearchStatus = $('#slskd-search-status');
 let currentSearchId = null;
 let searchPollInterval = null;
 
-// Open Soulseek search modal
 window.openSlskdSearch = async function(artist, title) {
-  // Check if slskd is running
   const status = await api.slskd.getStatus();
   if (!status.running) {
-    showToast('Démarrez Soulseek dans les paramètres d\'abord', 'error');
+    showToast('Démarrez Soulseek dans les paramètres', 'error');
     return;
   }
   
   const query = `${artist} ${title}`.trim();
   slskdSearchQuery.textContent = query;
-  slskdSearchStatus.textContent = 'Recherche en cours...';
+  slskdSearchStatus.textContent = 'Recherche...';
   slskdLoading.style.display = 'flex';
   slskdNoResults.style.display = 'none';
   slskdResultsList.innerHTML = '';
   slskdResultsList.appendChild(slskdLoading);
-  
   slskdModal.style.display = 'flex';
   
   try {
-    // Start search
     const { id } = await api.slskd.search(query);
     currentSearchId = id;
+    let lastCount = 0;
+    let tick = 0;
     
-    // Poll until we have results
     searchPollInterval = setInterval(async () => {
       try {
-        const data = await api.slskd.getSearchResults(currentSearchId);
+        tick++;
+        const loadFiles = tick % 4 === 0;
+        const data = await api.slskd.getSearchResults(currentSearchId, loadFiles);
         
-        if (data.results.length > 0) {
+        if (data.fileCount > 0) {
+          slskdSearchStatus.textContent = `${data.fileCount} fichiers...`;
+        }
+        
+        if (loadFiles && data.results.length > lastCount) {
+          lastCount = data.results.length;
           renderSlskdResults(data.results, !data.isComplete);
         }
         
         if (data.isComplete) {
           clearInterval(searchPollInterval);
           searchPollInterval = null;
-          if (data.results.length === 0) {
-            renderSlskdResults([], false);
-          }
+          // Charger les résultats finaux
+          const final = await api.slskd.getSearchResults(currentSearchId, true);
+          slskdSearchStatus.textContent = final.results.length > 0 ? `${final.results.length} résultats` : 'Aucun résultat';
+          renderSlskdResults(final.results, false);
         }
       } catch (err) {
-        console.error('Poll error:', err);
         clearInterval(searchPollInterval);
         searchPollInterval = null;
       }
-    }, 1000);
-    
+    }, 500);
   } catch (err) {
-    showToast(`Erreur de recherche: ${err.message}`, 'error');
+    showToast(`Erreur: ${err.message}`, 'error');
     closeSlskdModal();
   }
 };
@@ -658,61 +661,45 @@ function renderSlskdResults(results, searching = false) {
       slskdNoResults.style.display = 'flex';
       slskdResultsList.innerHTML = '';
       slskdResultsList.appendChild(slskdNoResults);
-      slskdSearchStatus.textContent = 'Aucun résultat';
     }
     return;
   }
   
   slskdNoResults.style.display = 'none';
-  slskdSearchStatus.textContent = searching 
-    ? `${results.length} résultats (recherche en cours...)` 
-    : `${results.length} résultats`;
   
-  const html = results.slice(0, 100).map((result, i) => {
-    const filename = result.filename.split('\\').pop().split('/').pop();
-    const ext = result.extension.toUpperCase();
-    const formatClass = ['flac', 'mp3', 'wav'].includes(result.extension) ? result.extension : 'other';
-    const sizeStr = formatSize(result.size);
-    const bitrateStr = result.bitRate ? `${result.bitRate}kbps` : '';
-    const sampleRateStr = result.sampleRate ? `${(result.sampleRate / 1000).toFixed(1)}kHz` : '';
-    const qualityInfo = [bitrateStr, sampleRateStr].filter(Boolean).join(' · ') || '—';
+  const html = results.slice(0, 100).map(r => {
+    const name = r.filename.split(/[\\\/]/).pop();
+    const ext = r.extension.toUpperCase();
+    const cls = ['flac', 'mp3', 'wav'].includes(r.extension) ? r.extension : 'other';
+    const quality = [r.bitRate && `${r.bitRate}kbps`, r.sampleRate && `${(r.sampleRate/1000).toFixed(1)}kHz`].filter(Boolean).join(' · ') || '—';
     
-    return `
-    <div class="slskd-result-row" data-index="${i}">
-      <span class="result-filename" title="${escapeHtml(result.filename)}">${escapeHtml(filename)}</span>
-      <span class="result-user" title="${escapeHtml(result.username)}">${escapeHtml(result.username)}</span>
-      <span class="result-format">
-        <span class="format-badge ${formatClass}">${ext}</span>
-      </span>
-      <span class="result-quality">${qualityInfo}</span>
-      <span class="result-size">${sizeStr}</span>
-      <button class="result-download-btn" onclick="downloadFromSlskd('${escapeHtml(result.username)}', '${escapeHtml(result.filename.replace(/'/g, "\\'"))}', this)">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
-        </svg>
+    return `<div class="slskd-result-row">
+      <span class="result-filename" title="${escapeHtml(r.filename)}">${escapeHtml(name)}</span>
+      <span class="result-user">${escapeHtml(r.username)}</span>
+      <span class="result-format"><span class="format-badge ${cls}">${ext}</span></span>
+      <span class="result-quality">${quality}</span>
+      <span class="result-size">${formatSize(r.size)}</span>
+      <button class="result-download-btn" onclick="downloadFromSlskd('${escapeJs(r.username)}','${escapeJs(r.filename)}',this)">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
       </button>
-    </div>
-  `}).join('');
+    </div>`;
+  }).join('');
   
   slskdResultsList.innerHTML = html;
 }
 
-// Download from Soulseek
 window.downloadFromSlskd = async function(username, filename, btn) {
   btn.disabled = true;
-  btn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="spin"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>`;
+  btn.innerHTML = '<svg class="spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/></svg>';
   
   try {
     await api.slskd.download(username, filename);
-    btn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>`;
-    btn.style.background = 'var(--success)';
-    btn.style.borderColor = 'var(--success)';
-    showToast('Téléchargement lancé!', 'success');
+    btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>';
+    btn.style.background = btn.style.borderColor = 'var(--success)';
   } catch (err) {
     btn.disabled = false;
-    btn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`;
-    btn.style.background = 'var(--danger)';
-    btn.style.borderColor = 'var(--danger)';
+    btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+    btn.style.background = btn.style.borderColor = 'var(--danger)';
     showToast(`Erreur: ${err.message}`, 'error');
   }
 };

@@ -36,10 +36,8 @@ contextBridge.exposeInMainWorld("kusic", {
     stop: () => ipcRenderer.invoke("slskd-stop"),
     getStatus: () => ipcRenderer.invoke("slskd-status"),
     search: (query: string) => ipcRenderer.invoke("slskd-search", query),
-    getSearchState: (searchId: string) =>
-      ipcRenderer.invoke("slskd-get-search-state", searchId),
-    getSearchResults: (searchId: string) =>
-      ipcRenderer.invoke("slskd-get-search-results", searchId),
+    getSearchResults: (searchId: string, includeFiles = true) =>
+      ipcRenderer.invoke("slskd-get-search-results", { searchId, includeFiles }),
     download: (username: string, filename: string) =>
       ipcRenderer.invoke("slskd-download", { username, filename }),
     getDownloads: () => ipcRenderer.invoke("slskd-get-downloads"),

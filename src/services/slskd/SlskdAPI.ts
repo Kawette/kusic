@@ -63,23 +63,18 @@ export class SlskdAPI {
     return { id: response.data.id };
   }
 
-  async getSearchState(
+  async getSearchResults(
     searchId: string,
-  ): Promise<{ isComplete: boolean; fileCount: number }> {
-    const response = await this.client.get(`/api/v0/searches/${searchId}`);
+    includeFiles = true,
+  ): Promise<{ results: SlskdSearchResult[]; isComplete: boolean; fileCount: number }> {
+    const url = includeFiles
+      ? `/api/v0/searches/${searchId}?includeResponses=true`
+      : `/api/v0/searches/${searchId}`;
+    const response = await this.client.get(url);
     return {
+      results: includeFiles ? this.flattenSearchResults(response.data) : [],
       isComplete: response.data.isComplete,
       fileCount: response.data.fileCount,
-    };
-  }
-
-  async getSearchResults(searchId: string): Promise<{ results: SlskdSearchResult[]; isComplete: boolean }> {
-    const response = await this.client.get(
-      `/api/v0/searches/${searchId}?includeResponses=true`,
-    );
-    return {
-      results: this.flattenSearchResults(response.data),
-      isComplete: response.data.isComplete
     };
   }
 
