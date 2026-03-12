@@ -165,6 +165,7 @@
             <span class="col-album">Album</span>
             <span class="col-source">Source</span>
             <span class="col-duration">Durée</span>
+            <span class="col-actions">Actions</span>
           </div>
 
           <div class="track-list" id="track-list">
@@ -353,6 +354,96 @@
               </div>
             </div>
 
+            <!-- Soulseek settings -->
+            <div class="settings-group">
+              <h3>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="#6c5ce7">
+                  <path
+                    d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"
+                  />
+                </svg>
+                Soulseek (slskd)
+              </h3>
+              <p class="setting-help">
+                Connectez-vous au réseau Soulseek pour télécharger et partager
+                de la musique.
+              </p>
+
+              <div class="slskd-status-bar" id="slskd-status-bar">
+                <span
+                  class="status-indicator"
+                  id="slskd-status-indicator"
+                ></span>
+                <span id="slskd-status-text">Non connecté</span>
+                <button class="btn-small" id="btn-slskd-toggle">
+                  Démarrer
+                </button>
+              </div>
+
+              <div class="setting-row">
+                <label>Pseudo Soulseek</label>
+                <input
+                  type="text"
+                  id="soulseek-username"
+                  class="input-field"
+                  placeholder="Votre pseudo Soulseek"
+                />
+              </div>
+              <div class="setting-row">
+                <label>Mot de passe Soulseek</label>
+                <input
+                  type="password"
+                  id="soulseek-password"
+                  class="input-field"
+                  placeholder="Votre mot de passe Soulseek"
+                />
+              </div>
+              <div class="setting-row">
+                <label>Dossier Bibliothèque (téléchargements + partage)</label>
+                <div class="setting-input-row">
+                  <input
+                    type="text"
+                    id="soulseek-library-path"
+                    class="input-field"
+                    placeholder="C:\Users\...\Ma Musique"
+                    readonly
+                  />
+                  <button class="btn-secondary" id="btn-browse-library">
+                    <svg
+                      width="16"
+                      height="16"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                    >
+                      <path
+                        d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"
+                      />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+
+              <div class="slskd-binary-status" id="slskd-binary-status">
+                <span id="slskd-binary-text">Vérification de slskd...</span>
+                <button
+                  class="btn-small btn-accent"
+                  id="btn-download-slskd"
+                  style="display: none"
+                >
+                  Télécharger slskd
+                </button>
+                <div
+                  class="progress-bar"
+                  id="slskd-download-progress"
+                  style="display: none"
+                >
+                  <div class="progress-fill" id="slskd-download-fill"></div>
+                </div>
+              </div>
+            </div>
+
             <button class="btn-primary" id="btn-save-settings">
               Sauvegarder les paramètres
             </button>
@@ -366,6 +457,68 @@
           </div>
         </section>
       </main>
+    </div>
+
+    <!-- Soulseek Download Modal -->
+    <div class="modal-overlay" id="slskd-modal" style="display: none">
+      <div class="modal modal-large">
+        <div class="modal-header">
+          <h2>Télécharger via Soulseek</h2>
+          <button class="btn-icon" id="btn-close-slskd-modal">
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </div>
+
+        <div class="slskd-search-info" id="slskd-search-info">
+          <span class="search-query" id="slskd-search-query"></span>
+          <span class="search-status" id="slskd-search-status"
+            >Recherche en cours...</span
+          >
+        </div>
+
+        <div class="slskd-results-container">
+          <div class="slskd-results-header">
+            <span class="col-file">Fichier</span>
+            <span class="col-user">Utilisateur</span>
+            <span class="col-format">Format</span>
+            <span class="col-size">Taille</span>
+            <span class="col-action">Action</span>
+          </div>
+          <div class="slskd-results-list" id="slskd-results-list">
+            <div class="slskd-loading" id="slskd-loading">
+              <svg class="spinner" width="32" height="32" viewBox="0 0 24 24">
+                <circle
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="3"
+                  stroke-dasharray="30 70"
+                />
+              </svg>
+              <p>Recherche sur le réseau Soulseek...</p>
+            </div>
+            <div
+              class="slskd-no-results"
+              id="slskd-no-results"
+              style="display: none"
+            >
+              <p>Aucun résultat trouvé</p>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- Toast notifications -->

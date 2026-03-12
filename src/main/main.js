@@ -1,8 +1,9 @@
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
 const Store = require('electron-store');
 const SpotifyService = require('../services/spotify');
 const SoundCloudService = require('../services/soundcloud');
+const { SlskdManager } = require('../services/slskd');
 
 const store = new Store({
   defaults: {
@@ -11,9 +12,17 @@ const store = new Store({
     spotify: {
       clientId: '',
       clientSecret: ''
+    },
+    soulseek: {
+      username: '',
+      password: '',
+      libraryPath: ''
     }
   }
 });
+
+// slskd manager instance
+let slskdManager = null;
 
 let mainWindow;
 
@@ -44,9 +53,31 @@ function createWindow() {
   }
 }
 
-app.whenReady().then(createWindow);
+app.whenReady().then(async () => {
+  // Initialize slskd manager
+  slskdManager = new SlskdManager();
+  
+  createWindow();
+  
+  // Auto-start slskd if configured
+  const soulseekConfig = store.get('soulseek');
+  if (soulseekConfig.username && soulseekConfig.password && soulseekConfig.libraryPath) {
+    try {
+      if (slskdManager.isBinaryInstalled()) {
+        await slskdManager.start(soulseekConfig);
+        console.log('[Kusic] slskd started successfully');
+      }
+    } catch (err) {
+      console.error('[Kusic] Failed to auto-start slskd:', err.message);
+    }
+  }
+});
 
 app.on('window-all-closed', () => {
+  // Stop slskd on app close
+  if (slskdManager) {
+    slskdManager.stop();
+  }
   if (process.platform !== 'darwin') app.quit();
 });
 
@@ -59,12 +90,14 @@ app.on('activate', () => {
 // Settings
 ipcMain.handle('get-settings', () => {
   return {
-    spotify: store.get('spotify')
+    spotify: store.get('spotify'),
+    soulseek: store.get('soulseek')
   };
 });
 
 ipcMain.handle('save-settings', (_, settings) => {
   if (settings.spotify) store.set('spotify', settings.spotify);
+  if (settings.soulseek) store.set('soulseek', settings.soulseek);
   return true;
 });
 
@@ -231,5 +264,153 @@ ipcMain.handle('get-stats', () => {
 ipcMain.handle('open-external', (_, url) => {
   const { shell } = require('electron');
   shell.openExternal(url);
+});
+
+// ─── Slskd Handlers ────────────────────────────────────────────
+
+// Browse for library folder
+ipcMain.handle('browse-folder', async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    properties: ['openDirectory'],
+    title: 'Choisir le dossier de la bibliothèque'
+  });
+  
+  if (result.canceled) return null;
+  return result.filePaths[0];
+});
+
+// Check platform support
+ipcMain.handle('slskd-check-platform', () => {
+  if (!slskdManager) return { supported: false, platform: process.platform };
+  return {
+    supported: slskdManager.isPlatformSupported(),
+    platform: process.platform,
+    arch: process.arch
+  };
+});
+
+// Get slskd version info
+ipcMain.handle('slskd-get-version', () => {
+  if (!slskdManager) return null;
+  return {
+    version: slskdManager.getVersion(),
+    installed: slskdManager.isBinaryInstalled()
+  };
+});
+
+// Check if slskd binary is installed
+ipcMain.handle('slskd-check-binary', () => {
+  return slskdManager ? slskdManager.isBinaryInstalled() : false;
+});
+
+// Download slskd binary
+ipcMain.handle('slskd-download-binary', async (event) => {
+  if (!slskdManager) throw new Error('Manager not initialized');
+  
+  return await slskdManager.downloadBinary((progress) => {
+    mainWindow.webContents.send('slskd-download-progress', progress);
+  });
+});
+
+// Start slskd
+ipcMain.handle('slskd-start', async () => {
+  if (!slskdManager) throw new Error('Manager not initialized');
+  
+  const config = store.get('soulseek');
+  if (!config.username || !config.password) {
+    throw new Error('Configurez vos identifiants Soulseek dans les paramètres');
+  }
+  if (!config.libraryPath) {
+    throw new Error('Configurez le dossier de votre bibliothèque dans les paramètres');
+  }
+  
+  await slskdManager.start(config);
+  return true;
+});
+
+// Stop slskd
+ipcMain.handle('slskd-stop', () => {
+  if (slskdManager) slskdManager.stop();
+  return true;
+});
+
+// Get slskd status
+ipcMain.handle('slskd-status', async () => {
+  if (!slskdManager) return { running: false, connected: false };
+  return await slskdManager.getStatus();
+});
+
+// Search on Soulseek
+ipcMain.handle('slskd-search', async (_, query) => {
+  if (!slskdManager || !slskdManager.isRunning) {
+    throw new Error('slskd n\'est pas démarré');
+  }
+  
+  const api = slskdManager.getAPI();
+  const results = await api.searchAndWait(query, 6000);
+  return results;
+});
+
+// Get search results (for polling)
+ipcMain.handle('slskd-get-search-results', async (_, searchId) => {
+  if (!slskdManager || !slskdManager.isRunning) {
+    throw new Error('slskd n\'est pas démarré');
+  }
+  
+  const api = slskdManager.getAPI();
+  const results = await api.getSearchResults(searchId);
+  return api._flattenSearchResults(results);
+});
+
+// Download a file
+ipcMain.handle('slskd-download', async (_, { username, filename }) => {
+  if (!slskdManager || !slskdManager.isRunning) {
+    throw new Error('slskd n\'est pas démarré');
+  }
+  
+  const api = slskdManager.getAPI();
+  await api.download(username, [{ filename }]);
+  return true;
+});
+
+// Get all downloads
+ipcMain.handle('slskd-get-downloads', async () => {
+  if (!slskdManager || !slskdManager.isRunning) {
+    return [];
+  }
+  
+  const api = slskdManager.getAPI();
+  return await api.getDownloads();
+});
+
+// Get uploads (what we're sharing)
+ipcMain.handle('slskd-get-uploads', async () => {
+  if (!slskdManager || !slskdManager.isRunning) {
+    return [];
+  }
+  
+  const api = slskdManager.getAPI();
+  return await api.getUploads();
+});
+
+// Rescan shared library
+ipcMain.handle('slskd-rescan-shares', async () => {
+  if (!slskdManager || !slskdManager.isRunning) {
+    throw new Error('slskd n\'est pas démarré');
+  }
+  
+  const api = slskdManager.getAPI();
+  await api.rescanShares();
+  return true;
+});
+
+// Get shares info
+ipcMain.handle('slskd-get-shares', async () => {
+  if (!slskdManager || !slskdManager.isRunning) {
+    return null;
+  }
+  
+  const api = slskdManager.getAPI();
+  return await api.getShares();
 });
 
