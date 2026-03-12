@@ -36,6 +36,8 @@ contextBridge.exposeInMainWorld("kusic", {
     stop: () => ipcRenderer.invoke("slskd-stop"),
     getStatus: () => ipcRenderer.invoke("slskd-status"),
     search: (query: string) => ipcRenderer.invoke("slskd-search", query),
+    getSearchState: (searchId: string) =>
+      ipcRenderer.invoke("slskd-get-search-state", searchId),
     getSearchResults: (searchId: string) =>
       ipcRenderer.invoke("slskd-get-search-results", searchId),
     download: (username: string, filename: string) =>

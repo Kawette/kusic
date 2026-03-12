@@ -9,6 +9,10 @@ interface ServerState {
 
 interface SearchResponse {
   id: string;
+  state: string;
+  isComplete: boolean;
+  fileCount: number;
+  responseCount: number;
   responses?: Array<{
     username: string;
     freeUploadSlots: number;
@@ -56,24 +60,26 @@ export class SlskdAPI {
     const response = await this.client.post("/api/v0/searches", {
       searchText: query,
     });
-    return response.data;
+    return { id: response.data.id };
   }
 
-  async getSearchResults(searchId: string): Promise<SearchResponse> {
+  async getSearchState(
+    searchId: string,
+  ): Promise<{ isComplete: boolean; fileCount: number }> {
     const response = await this.client.get(`/api/v0/searches/${searchId}`);
-    return response.data;
+    return {
+      isComplete: response.data.isComplete,
+      fileCount: response.data.fileCount,
+    };
   }
 
-  async searchAndWait(
-    query: string,
-    waitMs = 5000,
-  ): Promise<{ id: string; results: SlskdSearchResult[] }> {
-    const search = await this.search(query);
-    await new Promise((resolve) => setTimeout(resolve, waitMs));
-    const results = await this.getSearchResults(search.id);
+  async getSearchResults(searchId: string): Promise<{ results: SlskdSearchResult[]; isComplete: boolean }> {
+    const response = await this.client.get(
+      `/api/v0/searches/${searchId}?includeResponses=true`,
+    );
     return {
-      id: search.id,
-      results: this.flattenSearchResults(results),
+      results: this.flattenSearchResults(response.data),
+      isComplete: response.data.isComplete
     };
   }
 

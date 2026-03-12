@@ -929,7 +929,7 @@ a:hover {
 
 .slskd-results-header {
   display: grid;
-  grid-template-columns: 2fr 1fr 80px 80px 70px;
+  grid-template-columns: 2fr 1fr 70px 100px 70px 50px;
   gap: 12px;
   padding: 8px 12px;
   font-size: 11px;
@@ -947,7 +947,7 @@ a:hover {
 
 .slskd-result-row {
   display: grid;
-  grid-template-columns: 2fr 1fr 80px 80px 70px;
+  grid-template-columns: 2fr 1fr 70px 100px 70px 50px;
   gap: 12px;
   padding: 10px 12px;
   align-items: center;
@@ -1011,25 +1011,50 @@ a:hover {
   font-size: 12px;
 }
 
-.result-download-btn {
-  background: var(--accent);
-  color: white;
-  border: none;
-  padding: 6px 12px;
-  border-radius: var(--radius);
+.result-quality {
+  color: var(--text-secondary);
   font-size: 11px;
+}
+
+.result-download-btn {
+  background: transparent;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border-radius: var(--radius);
   cursor: pointer;
   transition: all var(--transition);
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .result-download-btn:hover {
-  background: var(--accent-hover);
+  background: var(--accent);
+  color: white;
 }
 
 .result-download-btn:disabled {
   background: var(--bg-tertiary);
   color: var(--text-muted);
+  border-color: var(--bg-tertiary);
   cursor: not-allowed;
+}
+
+.result-download-btn svg {
+  width: 16px;
+  height: 16px;
+}
+
+.result-download-btn svg.spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
 .slskd-loading,
