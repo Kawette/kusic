@@ -5,7 +5,6 @@ const api = window.kusic;
 
 // ─── State ──────────────────────────────────────────────────
 let currentView = 'tracks';
-let downloadedMap = {}; // trackId → { downloaded: true, filePath, downloadedAt }
 
 // ─── DOM References ─────────────────────────────────────────
 const $ = (sel) => document.querySelector(sel);
@@ -67,12 +66,7 @@ async function loadTracks() {
   };
 
   try {
-    const [tracks, statuses] = await Promise.all([
-      api.getTracks(filters),
-      api.getDownloadStatuses()
-    ]);
-    downloadedMap = statuses || {};
-    allTracksCache = tracks;
+    const tracks = await api.getTracks(filters);
     renderTracks(tracks);
     updateStats();
   } catch (err) {
@@ -91,13 +85,6 @@ function renderTracks(tracks) {
   tracksEmpty.style.display = 'none';
   
   const html = tracks.map((track, i) => {
-    const isDl = downloadedMap[track.id] && downloadedMap[track.id].downloaded;
-    const dlBtnClass = isDl ? 'track-dl-btn downloaded' : 'track-dl-btn';
-    const dlBtnIcon = isDl
-      ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>'
-      : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>';
-    const dlTitle = isDl ? 'Déjà téléchargé ✓' : 'Télécharger en FLAC';
-
     return `
     <div class="track-row" data-track-id="${track.id}">
       <span class="track-num">${i + 1}</span>
@@ -109,12 +96,9 @@ function renderTracks(tracks) {
       <span class="track-artist" title="${escapeHtml(track.artist)}">${escapeHtml(track.artist)}</span>
       <span class="track-album" title="${escapeHtml(track.album || '')}">${escapeHtml(track.album || '—')}</span>
       <span class="track-source">
-        <span class="source-badge ${track.source}">${track.source === 'spotify' ? '●  Spotify' : track.source === 'soundcloud' ? '●  SoundCloud' : '●  Local'}</span>
+        <span class="source-badge ${track.source}">${track.source === 'spotify' ? '●  Spotify' : '●  SoundCloud'}</span>
       </span>
       <span class="track-duration">${formatDuration(track.duration)}</span>
-      <button class="${dlBtnClass}" title="${dlTitle}" onclick="downloadSingleTrack(this, '${track.id}')">
-        ${dlBtnIcon}
-      </button>
     </div>
   `}).join('');
 
@@ -264,21 +248,12 @@ window.removePlaylist = async function(id) {
 // ─── Settings View ──────────────────────────────────────────
 async function loadSettings() {
   const settings = await api.getSettings();
-  $('#library-path').value = settings.libraryPath || '';
   $('#spotify-client-id').value = settings.spotify?.clientId || '';
   $('#spotify-client-secret').value = settings.spotify?.clientSecret || '';
 }
 
-$('#btn-browse-library').addEventListener('click', async () => {
-  const path = await api.selectLibraryFolder();
-  if (path) {
-    $('#library-path').value = path;
-  }
-});
-
 $('#btn-save-settings').addEventListener('click', async () => {
   const settings = {
-    libraryPath: $('#library-path').value,
     spotify: {
       clientId: $('#spotify-client-id').value.trim(),
       clientSecret: $('#spotify-client-secret').value.trim()
@@ -337,181 +312,6 @@ function escapeHtml(str) {
   div.textContent = str;
   return div.innerHTML;
 }
-
-// ─── Download ───────────────────────────────────────────────
-const downloadBar = $('#download-bar');
-const dlStatusText = $('#dl-status-text');
-const dlProgressText = $('#dl-progress-text');
-const dlProgressFill = $('#dl-progress-fill');
-const dlQueueText = $('#dl-queue-text');
-const dlSpeedText = $('#dl-speed-text');
-
-let isDownloading = false;
-let allTracksCache = [];
-
-// Cache tracks for download
-async function getCachedTracks() {
-  const filters = { search: '', source: 'all', sortBy: 'recent' };
-  allTracksCache = await api.getTracks(filters);
-  return allTracksCache;
-}
-
-// Download single track
-window.downloadSingleTrack = async function(btn, trackId) {
-  if (isDownloading) {
-    showToast('Un téléchargement est déjà en cours', 'error');
-    return;
-  }
-
-  const tracks = allTracksCache.length > 0 ? allTracksCache : await getCachedTracks();
-  const track = tracks.find(t => t.id === trackId);
-  if (!track) return;
-
-  btn.classList.add('downloading');
-  btn.innerHTML = '<svg class="spinner" width="16" height="16" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="3" stroke-dasharray="30 70"/></svg>';
-
-  try {
-    const result = await api.downloadTrack(track);
-    downloadedMap[trackId] = { downloaded: true, filePath: result.path, downloadedAt: Date.now() };
-    btn.classList.remove('downloading');
-    btn.classList.add('downloaded');
-    btn.title = 'Déjà téléchargé ✓';
-    btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>';
-    showToast(`"${track.title}" téléchargé ✓`, 'success');
-  } catch (err) {
-    btn.classList.remove('downloading');
-    btn.classList.add('error');
-    btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
-    showToast(`Erreur: ${err.message}`, 'error');
-  }
-};
-
-// Download all tracks
-$('#btn-download-all').addEventListener('click', async () => {
-  if (isDownloading) {
-    showToast('Un téléchargement est déjà en cours', 'error');
-    return;
-  }
-
-  const tracks = await getCachedTracks();
-  if (tracks.length === 0) {
-    showToast('Aucune piste à télécharger', 'error');
-    return;
-  }
-
-  isDownloading = true;
-  const btn = $('#btn-download-all');
-  btn.disabled = true;
-  btn.innerHTML = '<svg class="spinner" width="16" height="16" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="3" stroke-dasharray="30 70"/></svg> Téléchargement...';
-
-  downloadBar.style.display = 'block';
-  dlStatusText.textContent = 'Préparation du téléchargement...';
-  dlProgressText.textContent = '0%';
-  dlProgressFill.style.width = '0%';
-  dlQueueText.textContent = `0 / ${tracks.length} pistes`;
-  dlSpeedText.textContent = '';
-
-  try {
-    const results = await api.downloadTracks(tracks);
-
-    const downloaded = results.filter(r => r.status === 'downloaded').length;
-    const existed = results.filter(r => r.status === 'exists').length;
-    const errors = results.filter(r => r.status === 'error').length;
-
-    dlStatusText.textContent = 'Terminé !';
-    dlProgressText.textContent = '100%';
-    dlProgressFill.style.width = '100%';
-    dlQueueText.textContent = `${downloaded} téléchargés, ${existed} existants, ${errors} erreurs`;
-    dlSpeedText.textContent = '';
-
-    showToast(`Téléchargement terminé: ${downloaded} nouveaux, ${existed} existants, ${errors} erreurs`, 'success');
-  } catch (err) {
-    dlStatusText.textContent = `Erreur: ${err.message}`;
-    showToast(`Erreur: ${err.message}`, 'error');
-  } finally {
-    isDownloading = false;
-    btn.disabled = false;
-    btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Tout télécharger';
-
-    // Hide bar after 10s
-    setTimeout(() => {
-      if (!isDownloading) downloadBar.style.display = 'none';
-    }, 10000);
-  }
-});
-
-// Open library folder
-$('#btn-open-library').addEventListener('click', () => {
-  api.openLibraryFolder();
-});
-
-// Listen for download events from main process
-api.onDownloadProgress((data) => {
-  if (data.percent) {
-    dlProgressFill.style.width = `${data.percent}%`;
-    dlProgressText.textContent = `${Math.round(data.percent)}%`;
-  }
-  if (data.speed) {
-    dlSpeedText.textContent = data.speed;
-  }
-  if (data.queuePosition && data.queueTotal) {
-    dlQueueText.textContent = `${data.queuePosition} / ${data.queueTotal} pistes`;
-  }
-
-  // Update individual track button
-  if (data.trackId) {
-    const row = document.querySelector(`.track-row[data-track-id="${data.trackId}"]`);
-    if (row) {
-      const btn = row.querySelector('.track-dl-btn');
-      if (btn && !btn.classList.contains('downloaded')) {
-        btn.classList.add('downloading');
-        btn.innerHTML = '<svg class="spinner" width="16" height="16" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="3" stroke-dasharray="30 70"/></svg>';
-      }
-    }
-  }
-});
-
-api.onDownloadTrackComplete((data) => {
-  const { result, completed, total } = data;
-  dlStatusText.textContent = `Téléchargement ${completed}/${total}...`;
-  dlProgressFill.style.width = `${(completed / total) * 100}%`;
-  dlProgressText.textContent = `${Math.round((completed / total) * 100)}%`;
-  dlQueueText.textContent = `${completed} / ${total} pistes`;
-
-  // Update local map so re-renders keep the ✓ state
-  if (result.status === 'downloaded' || result.status === 'exists') {
-    downloadedMap[result.trackId] = { downloaded: true, filePath: result.path, downloadedAt: Date.now() };
-  }
-
-  const row = document.querySelector(`.track-row[data-track-id="${result.trackId}"]`);
-  if (row) {
-    const btn = row.querySelector('.track-dl-btn');
-    if (btn) {
-      btn.classList.remove('downloading');
-      btn.classList.add('downloaded');
-      btn.title = 'Déjà téléchargé ✓';
-      btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>';
-    }
-  }
-});
-
-api.onDownloadTrackError((data) => {
-  const row = document.querySelector(`.track-row[data-track-id="${data.trackId}"]`);
-  if (row) {
-    const btn = row.querySelector('.track-dl-btn');
-    if (btn) {
-      btn.classList.remove('downloading');
-      btn.classList.add('error');
-      btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
-    }
-  }
-});
-
-api.onDownloadStatus((data) => {
-  if (data.message) {
-    dlStatusText.textContent = data.message;
-  }
-});
 
 // ─── Keyboard shortcuts ─────────────────────────────────────
 document.addEventListener('keydown', (e) => {

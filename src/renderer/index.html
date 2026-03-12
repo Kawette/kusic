@@ -124,43 +124,6 @@
                   />
                 </svg>
               </button>
-              <button
-                class="btn-secondary"
-                id="btn-open-library"
-                title="Ouvrir le dossier bibliothèque"
-              >
-                <svg
-                  width="16"
-                  height="16"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                >
-                  <path
-                    d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"
-                  />
-                </svg>
-              </button>
-              <button
-                class="btn-primary btn-download-all"
-                id="btn-download-all"
-                title="Télécharger toutes les pistes en FLAC"
-              >
-                <svg
-                  width="16"
-                  height="16"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                >
-                  <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
-                  <polyline points="7 10 12 15 17 10" />
-                  <line x1="12" y1="15" x2="12" y2="3" />
-                </svg>
-                Tout télécharger
-              </button>
             </div>
           </div>
           <div class="view-controls">
@@ -186,7 +149,6 @@
               <option value="all">Toutes les sources</option>
               <option value="spotify">Spotify</option>
               <option value="soundcloud">SoundCloud</option>
-              <option value="local">Local</option>
             </select>
             <select id="sort-by" class="select-control">
               <option value="recent">Plus récent</option>
@@ -196,25 +158,6 @@
             </select>
           </div>
 
-          <!-- Download progress bar -->
-          <div class="download-bar" id="download-bar" style="display: none">
-            <div class="download-bar-info">
-              <span id="dl-status-text">Préparation...</span>
-              <span id="dl-progress-text">0%</span>
-            </div>
-            <div class="download-bar-track">
-              <div
-                class="download-bar-fill"
-                id="dl-progress-fill"
-                style="width: 0%"
-              ></div>
-            </div>
-            <div class="download-bar-details">
-              <span id="dl-queue-text"></span>
-              <span id="dl-speed-text"></span>
-            </div>
-          </div>
-
           <div class="track-list-header">
             <span class="col-num">#</span>
             <span class="col-title">Titre</span>
@@ -222,7 +165,6 @@
             <span class="col-album">Album</span>
             <span class="col-source">Source</span>
             <span class="col-duration">Durée</span>
-            <span class="col-dl">DL</span>
           </div>
 
           <div class="track-list" id="track-list">
@@ -371,25 +313,6 @@
           </div>
 
           <div class="settings-content">
-            <!-- Library path -->
-            <div class="settings-group">
-              <h3>Bibliothèque musicale</h3>
-              <div class="setting-row">
-                <label>Dossier de téléchargement</label>
-                <div class="setting-input-row">
-                  <input
-                    type="text"
-                    id="library-path"
-                    class="input-field"
-                    readonly
-                  />
-                  <button class="btn-secondary" id="btn-browse-library">
-                    Parcourir
-                  </button>
-                </div>
-              </div>
-            </div>
-
             <!-- Spotify credentials -->
             <div class="settings-group">
               <h3>

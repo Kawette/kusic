@@ -61,7 +61,6 @@ kusic/
 
 ## Prochaines étapes
 
-- [ ] Téléchargement des pistes (via yt-dlp ou équivalent)
 - [ ] Lecture audio intégrée
 - [ ] Export de la bibliothèque unifiée
 - [ ] Détection des doublons avancée (BPM, key)
