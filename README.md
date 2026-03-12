@@ -58,9 +58,3 @@ kusic/
 │       ├── spotify.js         # Intégration Spotify Web API
 │       └── soundcloud.js      # Intégration SoundCloud API
 ```
-
-## Prochaines étapes
-
-- [ ] Lecture audio intégrée
-- [ ] Export de la bibliothèque unifiée
-- [ ] Détection des doublons avancée (BPM, key)
