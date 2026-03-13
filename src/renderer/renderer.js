@@ -317,6 +317,7 @@ $('#btn-browse-library').addEventListener('click', async () => {
   const path = await api.browseFolder();
   if (path) {
     $('#soulseek-library-path').value = path;
+    onSettingsInput(true);
   }
 });
 
@@ -462,9 +463,11 @@ async function startSlskd() {
   // Set starting flag to prevent showing "Non connecté" during startup
   slskdStarting = true;
   
+  // Remove restart notice if present
+  const notice = $('#slskd-restart-notice');
+  if (notice) notice.remove();
+  
   try {
-    // Save settings first
-    await saveCurrentSettings();
     await api.slskd.start();
   } catch (err) {
     slskdStarting = false;
@@ -519,17 +522,56 @@ async function saveCurrentSettings() {
   return settings;
 }
 
-$('#btn-save-settings').addEventListener('click', async () => {
-  try {
-    await saveCurrentSettings();
-    const saved = $('#settings-saved');
-    saved.style.display = 'block';
-    setTimeout(() => saved.style.display = 'none', 3000);
-    showToast('Paramètres sauvegardés', 'success');
-  } catch (err) {
-    showToast(err.message, 'error');
-  }
-});
+// Auto-save on input change with debounce
+let settingsSaveTimeout = null;
+function onSettingsInput(isSoulseek = false) {
+  clearTimeout(settingsSaveTimeout);
+  settingsSaveTimeout = setTimeout(async () => {
+    try {
+      await saveCurrentSettings();
+      showToast('Paramètres enregistrés', 'success');
+      if (isSoulseek) {
+        // If slskd is running, notify that a restart is needed
+        const status = await api.slskd.getStatus();
+        if (status && (status.running || status.connected || status.connecting)) {
+          showSlskdRestartNotice();
+        }
+      }
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  }, 1000);
+}
+
+function showSlskdRestartNotice() {
+  const existing = $('#slskd-restart-notice');
+  if (existing) return; // already shown
+  
+  const bar = $('#slskd-status-bar');
+  if (!bar) return;
+  
+  const notice = document.createElement('div');
+  notice.id = 'slskd-restart-notice';
+  notice.className = 'slskd-restart-notice';
+  notice.innerHTML = `<span>Redémarrer pour appliquer</span>
+    <button class="btn-small btn-accent" id="btn-slskd-restart">Redémarrer</button>`;
+  bar.parentNode.insertBefore(notice, bar.nextSibling);
+  
+  $('#btn-slskd-restart').addEventListener('click', async () => {
+    notice.remove();
+    await stopSlskd();
+    // Small delay to let the process fully stop
+    setTimeout(() => startSlskd(), 500);
+  });
+}
+
+// Spotify inputs — auto-save
+$('#spotify-client-id').addEventListener('input', () => onSettingsInput(false));
+$('#spotify-client-secret').addEventListener('input', () => onSettingsInput(false));
+
+// Soulseek inputs — auto-save + restart notice
+$('#soulseek-username').addEventListener('input', () => onSettingsInput(true));
+$('#soulseek-password').addEventListener('input', () => onSettingsInput(true));
 
 // ─── Stats ──────────────────────────────────────────────────
 async function updateStats() {

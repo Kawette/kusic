@@ -66,7 +66,11 @@ export class SlskdAPI {
   async getSearchResults(
     searchId: string,
     includeFiles = true,
-  ): Promise<{ results: SlskdSearchResult[]; isComplete: boolean; fileCount: number }> {
+  ): Promise<{
+    results: SlskdSearchResult[];
+    isComplete: boolean;
+    fileCount: number;
+  }> {
     const url = includeFiles
       ? `/api/v0/searches/${searchId}?includeResponses=true`
       : `/api/v0/searches/${searchId}`;
@@ -146,7 +150,9 @@ export class SlskdAPI {
     await this.client.post(
       `/api/v0/transfers/downloads/${username}`,
       files.map((f) =>
-        typeof f === "string" ? { filename: f } : { filename: f.filename, size: f.size },
+        typeof f === "string"
+          ? { filename: f }
+          : { filename: f.filename, size: f.size },
       ),
     );
   }

@@ -349,17 +349,33 @@ ipcMain.handle("slskd-search", async (_, query: string) => {
   return await api.search(query);
 });
 
-ipcMain.handle("slskd-get-search-results", async (_, { searchId, includeFiles = true }: { searchId: string; includeFiles?: boolean }) => {
-  if (!slskdManager || !slskdManager.isRunning) {
-    throw new Error("slskd n'est pas démarré");
-  }
-  const api = slskdManager.getAPI();
-  return await api.getSearchResults(searchId, includeFiles);
-});
+ipcMain.handle(
+  "slskd-get-search-results",
+  async (
+    _,
+    {
+      searchId,
+      includeFiles = true,
+    }: { searchId: string; includeFiles?: boolean },
+  ) => {
+    if (!slskdManager || !slskdManager.isRunning) {
+      throw new Error("slskd n'est pas démarré");
+    }
+    const api = slskdManager.getAPI();
+    return await api.getSearchResults(searchId, includeFiles);
+  },
+);
 
 ipcMain.handle(
   "slskd-download",
-  async (_, { username, filename, size }: { username: string; filename: string; size: number }) => {
+  async (
+    _,
+    {
+      username,
+      filename,
+      size,
+    }: { username: string; filename: string; size: number },
+  ) => {
     if (!slskdManager || !slskdManager.isRunning) {
       throw new Error("slskd n'est pas démarré");
     }

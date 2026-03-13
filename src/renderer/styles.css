@@ -681,6 +681,21 @@ a:hover {
   flex: 1;
 }
 
+.slskd-restart-notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  background: rgba(108, 92, 231, 0.1);
+  border: 1px solid rgba(108, 92, 231, 0.3);
+  border-radius: var(--radius);
+  margin-top: 10px;
+  margin-bottom: 10px;
+  font-size: 12px;
+  color: var(--accent);
+}
+
 .settings-saved {
   margin-top: 12px;
   color: var(--success);
