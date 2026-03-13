@@ -866,8 +866,8 @@ function renderDownloadsView(transfers) {
     const name = t.filename.split(/[\\/]/).pop() || t.filename;
     const stateInfo = getStateDisplay(t.state);
     const pct = Math.round(t.percentComplete);
-    const speed = t.averageSpeed > 0 ? formatSpeed(t.averageSpeed) : '—';
     const isActive = !isTerminalState(t.state);
+    const speed = isActive && t.averageSpeed > 0 ? formatSpeed(t.averageSpeed) : '—';
     const isFailed = isTerminalState(t.state) && !isCompletedOk(t.state);
     const sizeText = isActive
       ? `${formatSize(t.bytesTransferred)} / ${formatSize(t.size)}`
