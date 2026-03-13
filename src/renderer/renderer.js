@@ -837,6 +837,7 @@ function renderDownloadsView(transfers) {
   navDownloadBadge.style.display = active.length > 0 ? 'inline-flex' : 'none';
 
   // Summary bar
+  const completedCount = completed.length + failed.length;
   downloadsSummary.innerHTML = `
     <div class="dl-summary-item">
       <span class="dl-summary-value state-active">${active.length}</span>
@@ -851,6 +852,10 @@ function renderDownloadsView(transfers) {
       <span class="dl-summary-label">Échoués</span>
     </div>
   `;
+
+  // Show/hide clear button
+  const clearBtn = document.getElementById('dl-clear-btn');
+  if (clearBtn) clearBtn.style.display = completed.length > 0 ? 'inline-flex' : 'none';
 
   if (transfers.length === 0) {
     downloadViewList.innerHTML = '';
@@ -942,6 +947,18 @@ window.retryDownload = async function(username, id, filename, size) {
   try {
     await api.slskd.retryDownload(username, id, filename, size);
     showToast('Téléchargement relancé');
+    pollDownloads();
+  } catch (err) {
+    showToast(`Erreur: ${err.message}`, 'error');
+  }
+};
+
+window.clearCompleted = async function() {
+  try {
+    const data = await api.slskd.getDownloads();
+    const transfers = flattenTransfers(data);
+    const succeeded = transfers.filter(t => isTerminalState(t.state) && isCompletedOk(t.state));
+    await Promise.all(succeeded.map(t => api.slskd.cancelDownload(t.username, t.id, true)));
     pollDownloads();
   } catch (err) {
     showToast(`Erreur: ${err.message}`, 'error');

@@ -1134,6 +1134,7 @@ a:hover {
 .downloads-summary {
   display: flex;
   gap: 12px;
+  align-items: stretch;
 }
 
 .dl-summary-item {
@@ -1146,6 +1147,25 @@ a:hover {
   background: var(--bg-secondary);
   border: 1px solid var(--border);
   border-radius: var(--radius);
+}
+
+.dl-clear-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 12px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-muted);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.dl-clear-btn:hover {
+  color: var(--danger);
+  border-color: var(--danger);
+  background: rgba(255, 71, 87, 0.05);
 }
 
 .dl-summary-value {
