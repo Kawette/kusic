@@ -141,11 +141,13 @@ export class SlskdAPI {
 
   async download(
     username: string,
-    files: Array<{ filename: string } | string>,
+    files: Array<{ filename: string; size: number } | string>,
   ): Promise<void> {
     await this.client.post(
       `/api/v0/transfers/downloads/${username}`,
-      files.map((f) => ({ filename: typeof f === "string" ? f : f.filename })),
+      files.map((f) =>
+        typeof f === "string" ? { filename: f } : { filename: f.filename, size: f.size },
+      ),
     );
   }
 

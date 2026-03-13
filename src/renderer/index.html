@@ -67,6 +67,22 @@
             </svg>
             <span>Playlists</span>
           </button>
+          <button class="nav-btn" data-view="downloads">
+            <svg
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
+              <polyline points="7 10 12 15 17 10" />
+              <line x1="12" y1="15" x2="12" y2="3" />
+            </svg>
+            <span>Téléchargements</span>
+            <span class="nav-badge" id="nav-download-badge" style="display: none">0</span>
+          </button>
           <button class="nav-btn" data-view="settings">
             <svg
               width="18"
@@ -453,6 +469,36 @@
               style="display: none"
             >
               ✓ Paramètres sauvegardés
+            </div>
+          </div>
+        </section>
+
+        <!-- ═══ DOWNLOADS VIEW ═══ -->
+        <section class="view" id="view-downloads">
+          <div class="view-header">
+            <h1>Téléchargements</h1>
+          </div>
+
+          <div class="downloads-content">
+            <div class="downloads-summary" id="downloads-summary"></div>
+            <div class="download-list-header">
+              <span class="dl-col-name">Fichier</span>
+              <span class="dl-col-user">Utilisateur</span>
+              <span class="dl-col-size">Taille</span>
+              <span class="dl-col-speed">Vitesse</span>
+              <span class="dl-col-progress">Progression</span>
+              <span class="dl-col-state">État</span>
+            </div>
+            <div class="download-view-list" id="download-view-list">
+              <div class="empty-state" id="downloads-empty">
+                <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+                  <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+                  <polyline points="7 10 12 15 17 10"/>
+                  <line x1="12" y1="15" x2="12" y2="3"/>
+                </svg>
+                <h2>Aucun téléchargement</h2>
+                <p>Les téléchargements lancés depuis Soulseek apparaîtront ici</p>
+              </div>
             </div>
           </div>
         </section>

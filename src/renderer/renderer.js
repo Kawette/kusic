@@ -13,6 +13,7 @@ const $$ = (sel) => document.querySelectorAll(sel);
 const views = {
   tracks: $('#view-tracks'),
   playlists: $('#view-playlists'),
+  downloads: $('#view-downloads'),
   settings: $('#view-settings')
 };
 
@@ -39,9 +40,13 @@ function switchView(view) {
   // Refresh view data
   if (view === 'tracks') loadTracks();
   if (view === 'playlists') loadPlaylists();
+  if (view === 'downloads') {
+    startDownloadPolling();
+    pollDownloads();
+  }
   if (view === 'settings') {
     loadSettings();
-    startSettingsPolling(); // Start UI polling when entering settings
+    startSettingsPolling();
   }
   
   // Stop settings polling when leaving settings page
@@ -407,6 +412,7 @@ function updateSlskdStatusUI(status) {
     textEl.textContent = 'Connecté';
     toggleBtn.textContent = 'Arrêter';
     toggleBtn.onclick = stopSlskd;
+    startDownloadPolling();
   } else if (status.connecting) {
     indicator.className = 'status-indicator running';
     textEl.textContent = 'Connexion au réseau...';
@@ -428,6 +434,7 @@ function updateSlskdStatusUI(status) {
     textEl.textContent = 'Non connecté';
     toggleBtn.textContent = 'Démarrer';
     toggleBtn.onclick = startSlskd;
+    stopDownloadPolling();
   }
 }
 
@@ -679,7 +686,7 @@ function renderSlskdResults(results, searching = false) {
       <span class="result-format"><span class="format-badge ${cls}">${ext}</span></span>
       <span class="result-quality">${quality}</span>
       <span class="result-size">${formatSize(r.size)}</span>
-      <button class="result-download-btn" onclick="downloadFromSlskd('${escapeJs(r.username)}','${escapeJs(r.filename)}',this)">
+      <button class="result-download-btn" onclick="downloadFromSlskd('${escapeJs(r.username)}','${escapeJs(r.filename)}',${r.size},this)">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
       </button>
     </div>`;
@@ -688,12 +695,13 @@ function renderSlskdResults(results, searching = false) {
   slskdResultsList.innerHTML = html;
 }
 
-window.downloadFromSlskd = async function(username, filename, btn) {
+window.downloadFromSlskd = async function(username, filename, size, btn) {
   btn.disabled = true;
   btn.innerHTML = '<svg class="spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/></svg>';
   
   try {
-    await api.slskd.download(username, filename);
+    await api.slskd.download(username, filename, size);
+    startDownloadPolling();
     btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>';
     btn.style.background = btn.style.borderColor = 'var(--success)';
   } catch (err) {
@@ -725,6 +733,147 @@ function formatSize(bytes) {
   return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
 }
 
+// ─── Downloads View ─────────────────────────────────────────
+const downloadViewList = $('#download-view-list');
+const downloadsEmpty = $('#downloads-empty');
+const downloadsSummary = $('#downloads-summary');
+const navDownloadBadge = $('#nav-download-badge');
+let downloadPollInterval = null;
+
+function startDownloadPolling() {
+  if (downloadPollInterval) return;
+  downloadPollInterval = setInterval(pollDownloads, 2000);
+}
+
+function stopDownloadPolling() {
+  if (downloadPollInterval) {
+    clearInterval(downloadPollInterval);
+    downloadPollInterval = null;
+  }
+}
+
+async function pollDownloads() {
+  try {
+    const data = await api.slskd.getDownloads();
+    const transfers = flattenTransfers(data);
+    renderDownloadsView(transfers);
+  } catch {
+    // slskd not running
+  }
+}
+
+function flattenTransfers(users) {
+  const transfers = [];
+  for (const user of users) {
+    const username = user.username || '';
+    for (const dir of user.directories || []) {
+      for (const file of dir.files || []) {
+        transfers.push({
+          username,
+          filename: file.filename || '',
+          state: file.state || '',
+          size: file.size || 0,
+          bytesTransferred: file.bytesTransferred || 0,
+          percentComplete: file.percentComplete || 0,
+          averageSpeed: file.averageSpeed || 0,
+          elapsedTime: file.elapsedTime || '',
+        });
+      }
+    }
+  }
+  return transfers;
+}
+
+function renderDownloadsView(transfers) {
+  const active = transfers.filter(t => !isTerminalState(t.state));
+  const completed = transfers.filter(t => isTerminalState(t.state) && isCompletedOk(t.state));
+  const failed = transfers.filter(t => isTerminalState(t.state) && !isCompletedOk(t.state));
+
+  // Update nav badge
+  navDownloadBadge.textContent = active.length;
+  navDownloadBadge.style.display = active.length > 0 ? 'inline-flex' : 'none';
+
+  // Summary bar
+  downloadsSummary.innerHTML = `
+    <div class="dl-summary-item">
+      <span class="dl-summary-value state-active">${active.length}</span>
+      <span class="dl-summary-label">En cours</span>
+    </div>
+    <div class="dl-summary-item">
+      <span class="dl-summary-value state-done">${completed.length}</span>
+      <span class="dl-summary-label">Terminés</span>
+    </div>
+    <div class="dl-summary-item">
+      <span class="dl-summary-value state-error">${failed.length}</span>
+      <span class="dl-summary-label">Échoués</span>
+    </div>
+  `;
+
+  if (transfers.length === 0) {
+    downloadViewList.innerHTML = '';
+    downloadViewList.appendChild(downloadsEmpty);
+    downloadsEmpty.style.display = 'flex';
+    return;
+  }
+
+  downloadsEmpty.style.display = 'none';
+  const sorted = [...active, ...failed.reverse(), ...completed.reverse()];
+
+  downloadViewList.innerHTML = sorted.map(t => {
+    const name = t.filename.split(/[\\/]/).pop() || t.filename;
+    const stateInfo = getStateDisplay(t.state);
+    const pct = Math.round(t.percentComplete);
+    const speed = t.averageSpeed > 0 ? formatSpeed(t.averageSpeed) : '—';
+    const isActive = !isTerminalState(t.state);
+    const sizeText = isActive
+      ? `${formatSize(t.bytesTransferred)} / ${formatSize(t.size)}`
+      : formatSize(t.size);
+
+    return `<div class="dl-row ${stateInfo.cls}">
+      <span class="dl-col-name" title="${escapeHtml(t.filename)}">${escapeHtml(name)}</span>
+      <span class="dl-col-user">${escapeHtml(t.username)}</span>
+      <span class="dl-col-size">${sizeText}</span>
+      <span class="dl-col-speed">${speed}</span>
+      <span class="dl-col-progress">
+        ${isActive ? `<div class="dl-progress-bar"><div class="dl-progress-fill" style="width: ${pct}%"></div></div><span class="dl-pct">${pct}%</span>` : ''}
+      </span>
+      <span class="dl-col-state ${stateInfo.cls}">${stateInfo.label}</span>
+    </div>`;
+  }).join('');
+}
+
+function isTerminalState(state) {
+  if (!state) return false;
+  const s = state.toLowerCase().replace(/[^a-z,]/g, '');
+  return s.includes('completed') || s.includes('errored') || s.includes('cancelled');
+}
+
+function isCompletedOk(state) {
+  if (!state) return false;
+  const s = state.toLowerCase();
+  return s.includes('completed') && !s.includes('aborted') && !s.includes('errored');
+}
+
+function getStateDisplay(state) {
+  if (!state) return { label: '?', cls: '' };
+  const s = state.toLowerCase();
+  if (s.includes('completed') && !s.includes('aborted') && !s.includes('errored')) return { label: 'Terminé', cls: 'state-done' };
+  if (s.includes('errored') || s.includes('aborted')) return { label: 'Erreur', cls: 'state-error' };
+  if (s.includes('cancelled')) return { label: 'Annulé', cls: 'state-error' };
+  if (s.includes('inprogress') || s.includes('in progress') || s.includes('initializing')) return { label: 'En cours', cls: 'state-active' };
+  if (s.includes('queued') && s.includes('remote')) return { label: 'File distante', cls: 'state-queued' };
+  if (s.includes('queued') && s.includes('local')) return { label: 'File locale', cls: 'state-queued' };
+  if (s.includes('queued')) return { label: 'En attente', cls: 'state-queued' };
+  if (s.includes('requested')) return { label: 'Demandé', cls: 'state-queued' };
+  return { label: state, cls: '' };
+}
+
+function formatSpeed(bytesPerSec) {
+  if (bytesPerSec < 1024) return `${bytesPerSec} B/s`;
+  if (bytesPerSec < 1024 * 1024) return `${(bytesPerSec / 1024).toFixed(0)} KB/s`;
+  return `${(bytesPerSec / (1024 * 1024)).toFixed(1)} MB/s`;
+}
+
 // ─── External links ─────────────────────────────────────────
 const spotifyDevLink = $('#link-spotify-dev');
 if (spotifyDevLink) {
@@ -738,6 +887,11 @@ if (spotifyDevLink) {
 async function init() {
   await loadTracks();
   await updateStats();
+  // Start polling downloads if slskd is running
+  try {
+    const status = await api.slskd.getStatus();
+    if (status && status.connected) startDownloadPolling();
+  } catch {}
 }
 
 init();

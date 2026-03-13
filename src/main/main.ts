@@ -359,12 +359,12 @@ ipcMain.handle("slskd-get-search-results", async (_, { searchId, includeFiles = 
 
 ipcMain.handle(
   "slskd-download",
-  async (_, { username, filename }: { username: string; filename: string }) => {
+  async (_, { username, filename, size }: { username: string; filename: string; size: number }) => {
     if (!slskdManager || !slskdManager.isRunning) {
       throw new Error("slskd n'est pas démarré");
     }
     const api = slskdManager.getAPI();
-    await api.download(username, [{ filename }]);
+    await api.download(username, [{ filename, size }]);
     return true;
   },
 );
