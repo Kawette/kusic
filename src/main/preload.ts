@@ -44,6 +44,22 @@ contextBridge.exposeInMainWorld("kusic", {
     download: (username: string, filename: string, size: number) =>
       ipcRenderer.invoke("slskd-download", { username, filename, size }),
     getDownloads: () => ipcRenderer.invoke("slskd-get-downloads"),
+    cancelDownload: (username: string, id: string, remove = false) =>
+      ipcRenderer.invoke("slskd-cancel-download", { username, id, remove }),
+    retryDownload: (
+      username: string,
+      id: string,
+      filename: string,
+      size: number,
+    ) =>
+      ipcRenderer.invoke("slskd-retry-download", {
+        username,
+        id,
+        filename,
+        size,
+      }),
+    clearCompletedDownloads: () =>
+      ipcRenderer.invoke("slskd-clear-completed-downloads"),
     getUploads: () => ipcRenderer.invoke("slskd-get-uploads"),
     rescanShares: () => ipcRenderer.invoke("slskd-rescan-shares"),
     getShares: () => ipcRenderer.invoke("slskd-get-shares"),

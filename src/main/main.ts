@@ -390,6 +390,47 @@ ipcMain.handle("slskd-get-downloads", async () => {
   return await slskdManager.getAPI().getDownloads();
 });
 
+ipcMain.handle(
+  "slskd-cancel-download",
+  async (
+    _,
+    { username, id, remove }: { username: string; id: string; remove: boolean },
+  ) => {
+    if (!slskdManager || !slskdManager.isRunning) {
+      throw new Error("slskd n'est pas démarré");
+    }
+    await slskdManager.getAPI().cancelDownload(username, id, remove);
+    return true;
+  },
+);
+
+ipcMain.handle(
+  "slskd-retry-download",
+  async (
+    _,
+    {
+      username,
+      id,
+      filename,
+      size,
+    }: { username: string; id: string; filename: string; size: number },
+  ) => {
+    if (!slskdManager || !slskdManager.isRunning) {
+      throw new Error("slskd n'est pas démarré");
+    }
+    await slskdManager.getAPI().retryDownload(username, id, filename, size);
+    return true;
+  },
+);
+
+ipcMain.handle("slskd-clear-completed-downloads", async () => {
+  if (!slskdManager || !slskdManager.isRunning) {
+    throw new Error("slskd n'est pas démarré");
+  }
+  await slskdManager.getAPI().clearCompletedDownloads();
+  return true;
+});
+
 ipcMain.handle("slskd-get-uploads", async () => {
   if (!slskdManager || !slskdManager.isRunning) return [];
   return await slskdManager.getAPI().getUploads();

@@ -1166,7 +1166,7 @@ a:hover {
 
 .download-list-header {
   display: grid;
-  grid-template-columns: 2.5fr 1fr 90px 90px 140px 90px;
+  grid-template-columns: 2.5fr 1fr 90px 90px 140px 90px 50px;
   gap: 12px;
   padding: 8px 16px;
   font-size: 11px;
@@ -1183,7 +1183,7 @@ a:hover {
 
 .dl-row {
   display: grid;
-  grid-template-columns: 2.5fr 1fr 90px 90px 140px 90px;
+  grid-template-columns: 2.5fr 1fr 90px 90px 140px 90px 50px;
   gap: 12px;
   padding: 10px 16px;
   align-items: center;
@@ -1261,6 +1261,43 @@ a:hover {
 .dl-col-state.state-done { color: var(--success); }
 .dl-col-state.state-error { color: var(--danger); }
 .dl-col-state.state-queued { color: var(--text-muted); }
+
+.dl-col-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+.dl-action-btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--transition);
+}
+
+.dl-action-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.dl-cancel:hover {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.dl-retry:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
 
 /* ─── Platform Warning ──────────────────────────────────────── */
 .platform-warning {

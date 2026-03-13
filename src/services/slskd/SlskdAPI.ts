@@ -162,6 +162,39 @@ export class SlskdAPI {
     return response.data;
   }
 
+  async cancelDownload(
+    username: string,
+    id: string,
+    remove = false,
+  ): Promise<void> {
+    await this.client.delete(
+      `/api/v0/transfers/downloads/${encodeURIComponent(username)}/${encodeURIComponent(id)}?remove=${remove}`,
+    );
+  }
+
+  async retryDownload(
+    username: string,
+    id: string,
+    filename: string,
+    size: number,
+  ): Promise<void> {
+    // Remove the old failed transfer first
+    await this.client.delete(
+      `/api/v0/transfers/downloads/${encodeURIComponent(username)}/${encodeURIComponent(id)}?remove=true`,
+    );
+    // Re-enqueue
+    const file: { filename: string; size?: number } = { filename };
+    if (size > 0) file.size = size;
+    await this.client.post(
+      `/api/v0/transfers/downloads/${encodeURIComponent(username)}`,
+      [file],
+    );
+  }
+
+  async clearCompletedDownloads(): Promise<void> {
+    await this.client.delete("/api/v0/transfers/downloads/all/completed");
+  }
+
   async getUploads(): Promise<unknown[]> {
     const response = await this.client.get("/api/v0/transfers/uploads");
     return response.data;

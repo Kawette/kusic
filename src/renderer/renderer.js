@@ -812,6 +812,7 @@ function flattenTransfers(users) {
       for (const file of dir.files || []) {
         transfers.push({
           username,
+          id: file.id || '',
           filename: file.filename || '',
           state: file.state || '',
           size: file.size || 0,
@@ -867,6 +868,7 @@ function renderDownloadsView(transfers) {
     const pct = Math.round(t.percentComplete);
     const speed = t.averageSpeed > 0 ? formatSpeed(t.averageSpeed) : '—';
     const isActive = !isTerminalState(t.state);
+    const isFailed = isTerminalState(t.state) && !isCompletedOk(t.state);
     const sizeText = isActive
       ? `${formatSize(t.bytesTransferred)} / ${formatSize(t.size)}`
       : formatSize(t.size);
@@ -880,6 +882,16 @@ function renderDownloadsView(transfers) {
         ${isActive ? `<div class="dl-progress-bar"><div class="dl-progress-fill" style="width: ${pct}%"></div></div><span class="dl-pct">${pct}%</span>` : ''}
       </span>
       <span class="dl-col-state ${stateInfo.cls}">${stateInfo.label}</span>
+      <span class="dl-col-actions">
+        ${isActive ? `<button class="dl-action-btn dl-cancel" title="Annuler" onclick="cancelDownload('${escapeJs(t.username)}','${escapeJs(t.id)}',false)">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>` : ''}
+        ${isFailed ? `<button class="dl-action-btn dl-retry" title="Réessayer" onclick="retryDownload('${escapeJs(t.username)}','${escapeJs(t.id)}','${escapeJs(t.filename)}',${t.size})">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
+        </button><button class="dl-action-btn dl-cancel" title="Supprimer" onclick="cancelDownload('${escapeJs(t.username)}','${escapeJs(t.id)}',true)">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>` : ''}
+      </span>
     </div>`;
   }).join('');
 }
@@ -893,15 +905,15 @@ function isTerminalState(state) {
 function isCompletedOk(state) {
   if (!state) return false;
   const s = state.toLowerCase();
-  return s.includes('completed') && !s.includes('aborted') && !s.includes('errored');
+  return s.includes('completed') && !s.includes('aborted') && !s.includes('errored') && !s.includes('cancelled');
 }
 
 function getStateDisplay(state) {
   if (!state) return { label: '?', cls: '' };
   const s = state.toLowerCase();
+  if (s.includes('cancelled')) return { label: 'Annulé', cls: 'state-error' };
   if (s.includes('completed') && !s.includes('aborted') && !s.includes('errored')) return { label: 'Terminé', cls: 'state-done' };
   if (s.includes('errored') || s.includes('aborted')) return { label: 'Erreur', cls: 'state-error' };
-  if (s.includes('cancelled')) return { label: 'Annulé', cls: 'state-error' };
   if (s.includes('inprogress') || s.includes('in progress') || s.includes('initializing')) return { label: 'En cours', cls: 'state-active' };
   if (s.includes('queued') && s.includes('remote')) return { label: 'File distante', cls: 'state-queued' };
   if (s.includes('queued') && s.includes('local')) return { label: 'File locale', cls: 'state-queued' };
@@ -915,6 +927,26 @@ function formatSpeed(bytesPerSec) {
   if (bytesPerSec < 1024 * 1024) return `${(bytesPerSec / 1024).toFixed(0)} KB/s`;
   return `${(bytesPerSec / (1024 * 1024)).toFixed(1)} MB/s`;
 }
+
+window.cancelDownload = async function(username, id, remove) {
+  try {
+    await api.slskd.cancelDownload(username, id, remove);
+    pollDownloads();
+  } catch (err) {
+    console.error('cancelDownload error', err);
+    showToast(`Erreur: ${err.message}`, 'error');
+  }
+};
+
+window.retryDownload = async function(username, id, filename, size) {
+  try {
+    await api.slskd.retryDownload(username, id, filename, size);
+    showToast('Téléchargement relancé');
+    pollDownloads();
+  } catch (err) {
+    showToast(`Erreur: ${err.message}`, 'error');
+  }
+};
 
 // ─── External links ─────────────────────────────────────────
 const spotifyDevLink = $('#link-spotify-dev');
