@@ -437,7 +437,6 @@ ipcMain.handle("refresh-library", async () => {
       const linkedLocal = linkedLocalFiles.get(track.id);
       if (linkedLocal) {
         matchedLinkedIds.add(track.id);
-        console.log(`[Kusic] Merging track ${track.title} with local file`);
         // Merge: keep playlist metadata, add local file quality info
         allTracks.push({
           ...track,
