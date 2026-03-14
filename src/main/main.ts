@@ -682,26 +682,16 @@ ipcMain.handle(
       }
 
       // Move/rename file
-      console.log(`[Kusic] Renaming: ${filePath} -> ${finalPath}`);
       const normalizedFilePath = path.normalize(filePath).toLowerCase();
       const normalizedFinalPath = path.normalize(finalPath).toLowerCase();
       
       if (normalizedFilePath !== normalizedFinalPath) {
         const fileDir = path.dirname(filePath);
         fs.renameSync(filePath, finalPath);
-        
-        // Verify rename worked
-        if (fs.existsSync(filePath)) {
-          console.log(`[Kusic] WARNING: Old file still exists after rename!`);
-        }
-        
-        console.log(`[Kusic] Renamed identified file to: ${path.basename(finalPath)}`);
 
         if (fileDir !== libraryPath) {
           cleanEmptyDirs(fileDir, libraryPath);
         }
-      } else {
-        console.log(`[Kusic] Paths are identical, no rename needed`);
       }
 
       // Remove the unknown track from store (it will be re-added as linked on next refresh)
