@@ -13,6 +13,11 @@ export interface Track {
   soundcloudUrl?: string;
   previewUrl?: string | null;
   streamUrl?: string | null;
+  // Local file metadata
+  format?: string;
+  bitRate?: number;
+  sampleRate?: number;
+  bitDepth?: number;
 }
 
 export interface Playlist {

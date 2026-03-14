@@ -95,19 +95,27 @@ app.on("activate", () => {
 
 // ─── Local File Scanner ────────────────────────────────────────
 
-const AUDIO_EXTENSIONS = [".mp3", ".flac", ".wav", ".m4a", ".aac", ".ogg", ".wma"];
+const AUDIO_EXTENSIONS = [
+  ".mp3",
+  ".flac",
+  ".wav",
+  ".m4a",
+  ".aac",
+  ".ogg",
+  ".wma",
+];
 
 async function scanLocalFiles(): Promise<Track[]> {
   const libraryPath = store.get("soulseek").libraryPath;
   console.log("[Kusic] Scanning local files in:", libraryPath);
-  
+
   if (!libraryPath || !fs.existsSync(libraryPath)) {
     console.log("[Kusic] Library path not configured or doesn't exist");
     return [];
   }
 
   const filePaths: string[] = [];
-  
+
   function scanDir(dir: string) {
     try {
       const entries = fs.readdirSync(dir, { withFileTypes: true });
@@ -128,13 +136,13 @@ async function scanLocalFiles(): Promise<Track[]> {
   }
 
   scanDir(libraryPath);
-  
+
   const tracks: Track[] = [];
   for (const filePath of filePaths) {
     const track = await parseAudioFile(filePath);
     if (track) tracks.push(track);
   }
-  
+
   console.log(`[Kusic] Found ${tracks.length} local audio files`);
   return tracks;
 }
@@ -145,18 +153,12 @@ async function parseAudioFile(filePath: string): Promise<Track | null> {
     const stats = fs.statSync(filePath);
     const filename = path.basename(filePath);
     const nameWithoutExt = path.basename(filename, path.extname(filename));
-    
-    console.log(`[Kusic] Parsing: ${filename}`);
-    console.log(`[Kusic]   - Artist tag: ${metadata.common.artist || "(none)"}`);
-    console.log(`[Kusic]   - Title tag: ${metadata.common.title || "(none)"}`);
-    console.log(`[Kusic]   - Album tag: ${metadata.common.album || "(none)"}`);
-    console.log(`[Kusic]   - Duration: ${metadata.format.duration || 0}s`);
-    
+
     // Use metadata if available, fallback to filename parsing
     let artist = metadata.common.artist || "";
     let title = metadata.common.title || "";
-    let album = metadata.common.album || path.basename(path.dirname(filePath));
-    
+    let album = metadata.common.album || "";
+
     // Fallback: parse "Artist - Title" from filename
     if (!artist || !title) {
       const separators = [" - ", " – ", " — "];
@@ -171,7 +173,7 @@ async function parseAudioFile(filePath: string): Promise<Track | null> {
       if (!title) title = nameWithoutExt;
       if (!artist) artist = "Artiste inconnu";
     }
-    
+
     // Extract artwork as base64 data URL
     let artwork = "";
     if (metadata.common.picture && metadata.common.picture.length > 0) {
@@ -179,7 +181,16 @@ async function parseAudioFile(filePath: string): Promise<Track | null> {
       const base64 = Buffer.from(pic.data).toString("base64");
       artwork = `data:${pic.format};base64,${base64}`;
     }
-    
+
+    // Get format info
+    const ext = path.extname(filePath).toLowerCase().slice(1);
+    const format = ext.toUpperCase();
+    const bitRate = metadata.format.bitrate
+      ? Math.round(metadata.format.bitrate / 1000)
+      : undefined;
+    const sampleRate = metadata.format.sampleRate;
+    const bitDepth = metadata.format.bitsPerSample;
+
     return {
       id: `local-${Buffer.from(filePath).toString("base64").slice(0, 20)}`,
       source: "local",
@@ -189,6 +200,10 @@ async function parseAudioFile(filePath: string): Promise<Track | null> {
       artwork,
       duration: Math.round((metadata.format.duration || 0) * 1000),
       addedAt: stats.mtimeMs,
+      format,
+      bitRate,
+      sampleRate,
+      bitDepth,
     };
   } catch (err) {
     console.error(`[Kusic] Failed to parse ${filePath}:`, err);
@@ -307,7 +322,11 @@ ipcMain.handle("refresh-library", async () => {
 
   store.set("tracks", allTracks);
 
-  return { playlists: refreshed, totalTracks: allTracks.length, localTracks: localTracks.length };
+  return {
+    playlists: refreshed,
+    totalTracks: allTracks.length,
+    localTracks: localTracks.length,
+  };
 });
 
 ipcMain.handle("remove-playlist", (_, playlistId: string) => {
