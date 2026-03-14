@@ -1092,9 +1092,8 @@ function renderDownloadsView(transfers) {
       <span class="dl-col-name" title="${escapeHtml(t.filename)}">${escapeHtml(name)}</span>
       <span class="dl-col-user">${escapeHtml(t.username)}</span>
       <span class="dl-col-size">${sizeText}</span>
-      <span class="dl-col-speed">${speed}</span>
       <span class="dl-col-progress">
-        ${isActive ? `<div class="dl-progress-bar"><div class="dl-progress-fill" style="width: ${pct}%"></div></div><span class="dl-pct">${pct}%</span>` : ''}
+        ${isActive ? `<span class="dl-speed">${speed}</span><div class="dl-progress-bar"><div class="dl-progress-fill" style="width: ${pct}%"></div></div><span class="dl-pct">${pct}%</span>` : ''}
       </span>
       <span class="dl-col-state ${stateInfo.cls}">${stateInfo.label}</span>
       <span class="dl-col-actions">
