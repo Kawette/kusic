@@ -130,7 +130,7 @@ function renderTracks(tracks) {
       actionHtml = downloadBtn;
     }
     
-    // Source badge label
+    // Source badge label with identify icon for unknown
     const sourceLabels = {
       spotify: '●  Spotify',
       soundcloud: '●  SoundCloud',
@@ -138,6 +138,14 @@ function renderTracks(tracks) {
       unknown: '●  Inconnu'
     };
     const sourceLabel = sourceLabels[track.source] || '●  Inconnu';
+    
+    // Add identify icon for unknown tracks
+    const identifyIcon = track.source === 'unknown' ? `
+      <span class="identify-icon" onclick="openIdentifyModal('${escapeJs(track.id)}', '${escapeJs(track.title)}', '${escapeJs(track.artist)}')" title="Identifier ce morceau">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+        </svg>
+      </span>` : '';
     
     return `
     <div class="track-row" data-track-id="${track.id}">
@@ -152,7 +160,7 @@ function renderTracks(tracks) {
       </div>
       <span class="track-album" title="${escapeHtml(track.album || '')}">${escapeHtml(track.album || '—')}</span>
       <span class="track-source">
-        <span class="source-badge ${track.source}">${sourceLabel}</span>
+        <span class="source-badge ${track.source}">${sourceLabel}</span>${identifyIcon}
       </span>
       <span class="track-duration">${formatDuration(track.duration)}</span>
       <span class="${actionClass}">${actionHtml}</span>
@@ -845,6 +853,81 @@ function closeSlskdModal() {
 }
 
 $('#btn-close-slskd-modal').addEventListener('click', closeSlskdModal);
+
+// ─── Identify Modal ─────────────────────────────────────────
+const identifyModal = $('#identify-modal');
+const identifySearchInput = $('#identify-search-input');
+const identifyResultsList = $('#identify-results-list');
+const identifySourceTitle = $('#identify-source-title');
+let identifySourceTrackId = null; // The unknown track to identify
+
+window.openIdentifyModal = function(trackId, title, artist) {
+  identifySourceTrackId = trackId;
+  identifySourceTitle.textContent = `${title} - ${artist}`;
+  identifySearchInput.value = '';
+  identifyResultsList.innerHTML = '<p class="identify-hint">Recherchez un morceau de votre bibliothèque pour l\'associer à ce fichier.</p>';
+  identifyModal.style.display = 'flex';
+  identifySearchInput.focus();
+};
+
+function closeIdentifyModal() {
+  identifyModal.style.display = 'none';
+  identifySourceTrackId = null;
+}
+
+$('#btn-close-identify-modal').addEventListener('click', closeIdentifyModal);
+
+identifySearchInput.addEventListener('input', async (e) => {
+  const query = e.target.value.trim().toLowerCase();
+  if (query.length < 2) {
+    identifyResultsList.innerHTML = '<p class="identify-hint">Recherchez un morceau de votre bibliothèque pour l\'associer à ce fichier.</p>';
+    return;
+  }
+  
+  // Get all playlist tracks (not unknown ones)
+  const tracks = await api.getTracks({ source: 'all' });
+  const playlistTracks = tracks.filter(t => t.source === 'spotify' || t.source === 'soundcloud');
+  
+  // Filter by search query
+  const results = playlistTracks.filter(t => 
+    t.title.toLowerCase().includes(query) || 
+    t.artist.toLowerCase().includes(query) ||
+    (t.album && t.album.toLowerCase().includes(query))
+  ).slice(0, 20);
+  
+  if (results.length === 0) {
+    identifyResultsList.innerHTML = '<p class="identify-hint">Aucun résultat</p>';
+    return;
+  }
+  
+  identifyResultsList.innerHTML = results.map(t => `
+    <div class="identify-result-row" onclick="linkToTrack('${escapeJs(t.id)}')">
+      <img class="identify-result-thumb" src="${t.artwork || ''}" alt="" onerror="this.style.display='none'">
+      <div class="identify-result-info">
+        <span class="identify-result-title">${escapeHtml(t.title)}</span>
+        <span class="identify-result-artist">${escapeHtml(t.artist)}</span>
+      </div>
+      <span class="source-badge ${t.source}">${t.source === 'spotify' ? '● Spotify' : '● SoundCloud'}</span>
+    </div>
+  `).join('');
+});
+
+window.linkToTrack = async function(targetTrackId) {
+  if (!identifySourceTrackId) return;
+  
+  try {
+    const result = await api.linkUnknownToTrack(identifySourceTrackId, targetTrackId);
+    if (result.success) {
+      showToast('Morceau identifié et lié avec succès', 'success');
+      closeIdentifyModal();
+      loadTracks();
+    } else {
+      showToast(`Erreur: ${result.error}`, 'error');
+    }
+  } catch (err) {
+    showToast(`Erreur: ${err.message}`, 'error');
+  }
+};
 
 function formatSize(bytes) {
   if (!bytes) return '—';

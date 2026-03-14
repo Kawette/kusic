@@ -535,7 +535,7 @@ ipcMain.handle(
       const ext = path.extname(filePath);
       const cleanTitle = sanitizeFilename(playlistTrack.title);
       const cleanArtist = sanitizeFilename(playlistTrack.artist);
-      const newFilename = `${cleanTitle} - ${cleanArtist}${ext}`;
+      const newFilename = `${cleanArtist} - ${cleanTitle}${ext}`;
       const targetPath = path.join(libraryPath, newFilename);
 
       // Handle name conflicts
@@ -545,7 +545,7 @@ ipcMain.handle(
         while (fs.existsSync(finalPath)) {
           finalPath = path.join(
             libraryPath,
-            `${cleanTitle} - ${cleanArtist} (${counter})${ext}`,
+            `${cleanArtist} - ${cleanTitle} (${counter})${ext}`,
           );
           counter++;
         }
@@ -620,6 +620,105 @@ async function findFileInLibrary(
   };
   return searchRecursive(libraryPath);
 }
+
+ipcMain.handle(
+  "link-unknown-to-track",
+  async (_, unknownTrackId: string, targetTrackId: string) => {
+    try {
+      const tracks = store.get("tracks");
+      const playlists = store.get("playlists");
+      const libraryPath = store.get("soulseek").libraryPath;
+
+      // Find the unknown track (local file)
+      const unknownTrack = tracks.find(
+        (t) => t.id === unknownTrackId && t.source === "unknown",
+      );
+      if (!unknownTrack || !unknownTrack.filePath) {
+        return { success: false, error: "Fichier source non trouvé" };
+      }
+
+      // Find the target playlist track
+      let targetTrack: Track | null = null;
+      for (const pl of playlists) {
+        const found = pl.tracks.find((t) => t.id === targetTrackId);
+        if (found) {
+          targetTrack = found;
+          break;
+        }
+      }
+      if (!targetTrack) {
+        return { success: false, error: "Morceau cible non trouvé" };
+      }
+
+      const filePath = unknownTrack.filePath;
+
+      // Write metadata with KUSIC tag
+      const merged = mergeMetadata(targetTrack, unknownTrack);
+      const tagSuccess = await writeMetadataToFile(filePath, merged);
+      if (!tagSuccess) {
+        return { success: false, error: "Impossible d'écrire les métadonnées" };
+      }
+
+      // Small delay to ensure file handle is released on Windows
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      // Rename file to "Artiste - Titre.ext"
+      const ext = path.extname(filePath);
+      const cleanTitle = sanitizeFilename(targetTrack.title);
+      const cleanArtist = sanitizeFilename(targetTrack.artist);
+      const newFilename = `${cleanArtist} - ${cleanTitle}${ext}`;
+      let finalPath = path.join(libraryPath, newFilename);
+
+      // Handle name conflicts
+      if (fs.existsSync(finalPath) && finalPath !== filePath) {
+        let counter = 1;
+        while (fs.existsSync(finalPath)) {
+          finalPath = path.join(
+            libraryPath,
+            `${cleanArtist} - ${cleanTitle} (${counter})${ext}`,
+          );
+          counter++;
+        }
+      }
+
+      // Move/rename file
+      console.log(`[Kusic] Renaming: ${filePath} -> ${finalPath}`);
+      const normalizedFilePath = path.normalize(filePath).toLowerCase();
+      const normalizedFinalPath = path.normalize(finalPath).toLowerCase();
+      
+      if (normalizedFilePath !== normalizedFinalPath) {
+        const fileDir = path.dirname(filePath);
+        fs.renameSync(filePath, finalPath);
+        
+        // Verify rename worked
+        if (fs.existsSync(filePath)) {
+          console.log(`[Kusic] WARNING: Old file still exists after rename!`);
+        }
+        
+        console.log(`[Kusic] Renamed identified file to: ${path.basename(finalPath)}`);
+
+        if (fileDir !== libraryPath) {
+          cleanEmptyDirs(fileDir, libraryPath);
+        }
+      } else {
+        console.log(`[Kusic] Paths are identical, no rename needed`);
+      }
+
+      // Remove the unknown track from store (it will be re-added as linked on next refresh)
+      const updatedTracks = tracks.filter((t) => t.id !== unknownTrackId);
+      store.set("tracks", updatedTracks);
+
+      console.log(
+        `[Kusic] Linked unknown track to ${targetTrack.title} - ${targetTrack.artist}`,
+      );
+
+      return { success: true, filePath: finalPath };
+    } catch (err) {
+      console.error("[Kusic] link-unknown-to-track error:", err);
+      return { success: false, error: (err as Error).message };
+    }
+  },
+);
 
 ipcMain.handle("remove-playlist", (_, playlistId: string) => {
   let playlists = store.get("playlists");

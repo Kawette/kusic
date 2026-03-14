@@ -617,6 +617,34 @@
       </div>
     </div>
 
+    <!-- Identify Modal -->
+    <div class="modal-overlay" id="identify-modal" style="display: none">
+      <div class="modal-content identify-modal-content">
+        <div class="modal-header">
+          <h2>Identifier le morceau</h2>
+          <button class="btn-icon" id="btn-close-identify-modal">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </div>
+
+        <div class="identify-source-info">
+          <span class="identify-label">Fichier :</span>
+          <span class="identify-value" id="identify-source-title">—</span>
+        </div>
+
+        <div class="identify-search-bar">
+          <input type="text" class="identify-search-input" id="identify-search-input" placeholder="Rechercher dans la bibliothèque...">
+        </div>
+
+        <div class="identify-results-list" id="identify-results-list">
+          <p class="identify-hint">Recherchez un morceau de votre bibliothèque pour l'associer à ce fichier.</p>
+        </div>
+      </div>
+    </div>
+
     <!-- Toast notifications -->
     <div class="toast-container" id="toast-container"></div>
 

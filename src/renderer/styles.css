@@ -1415,3 +1415,151 @@ a:hover {
 .platform-warning svg {
   flex-shrink: 0;
 }
+
+/* ─── Identify Modal ─────────────────────────────────────────── */
+.identify-modal-content {
+  width: 500px;
+  height: 450px;
+  display: flex;
+  flex-direction: column;
+}
+
+.identify-source-info {
+  display: flex;
+  gap: 8px;
+  padding: 12px 16px;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius);
+  margin-bottom: 12px;
+  flex-shrink: 0;
+}
+
+.identify-label {
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.identify-value {
+  color: var(--text-primary);
+  font-weight: 500;
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.identify-search-bar {
+  margin-bottom: 12px;
+  flex-shrink: 0;
+}
+
+.identify-search-input {
+  width: 100%;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 14px;
+  font-size: 14px;
+  color: var(--text-primary);
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.2s;
+  box-sizing: border-box;
+}
+
+.identify-search-input:focus {
+  border-color: var(--accent);
+}
+
+.identify-results-list {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.identify-results-list::-webkit-scrollbar {
+  width: 8px;
+}
+
+.identify-results-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.identify-results-list::-webkit-scrollbar-thumb {
+  background: var(--bg-active);
+  border-radius: 4px;
+}
+
+.identify-results-list::-webkit-scrollbar-thumb:hover {
+  background: var(--accent);
+}
+
+.identify-hint {
+  color: var(--text-muted);
+  font-size: 13px;
+  text-align: center;
+  padding: 20px;
+}
+
+.identify-result-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.identify-result-row:hover {
+  background: var(--bg-hover);
+}
+
+.identify-result-thumb {
+  width: 40px;
+  height: 40px;
+  border-radius: 4px;
+  object-fit: cover;
+  background: var(--bg-tertiary);
+}
+
+.identify-result-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.identify-result-title {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.identify-result-artist {
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.identify-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: 6px;
+  color: var(--text-muted);
+  cursor: pointer;
+  opacity: 0.6;
+  transition: opacity 0.15s, color 0.15s;
+}
+
+.identify-icon:hover {
+  opacity: 1;
+  color: var(--accent);
+}
