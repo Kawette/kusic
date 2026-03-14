@@ -107,8 +107,9 @@ function renderTracks(tracks) {
         </button>
       ` : '';
     
-    // Format quality info for local files
-    let qualityHtml = '—';
+    // Format action content: quality for local files, download button for others
+    let actionHtml = '';
+    let actionClass = 'track-actions';
     if (track.source === 'local' && track.format) {
       const fmt = track.format.toUpperCase();
       const badgeClass = ['FLAC', 'MP3', 'WAV'].includes(fmt) ? fmt.toLowerCase() : 'other';
@@ -119,7 +120,10 @@ function renderTracks(tracks) {
       } else if (!isLossless && track.bitRate) {
         qualityText = `${track.bitRate}kbps`;
       }
-      qualityHtml = `<span class="format-badge ${badgeClass}">${fmt}</span>${qualityText ? `<span class="quality-text">${qualityText}</span>` : ''}`;
+      actionHtml = `<span class="format-badge ${badgeClass}">${fmt}</span>${qualityText ? `<span class="quality-text">${qualityText}</span>` : ''}`;
+      actionClass = 'track-actions quality';
+    } else {
+      actionHtml = downloadBtn;
     }
     
     return `
@@ -128,16 +132,17 @@ function renderTracks(tracks) {
       <div class="track-title-cell">
         <img class="track-thumb" src="${track.artwork || ''}" alt="" 
           onerror="this.style.display='none'">
-        <span class="track-title" title="${escapeHtml(track.title)}">${escapeHtml(track.title)}</span>
+        <div class="track-info">
+          <span class="track-title" title="${escapeHtml(track.title)}">${escapeHtml(track.title)}</span>
+          <span class="track-artist" title="${escapeHtml(track.artist)}">${escapeHtml(track.artist)}</span>
+        </div>
       </div>
-      <span class="track-artist" title="${escapeHtml(track.artist)}">${escapeHtml(track.artist)}</span>
       <span class="track-album" title="${escapeHtml(track.album || '')}">${escapeHtml(track.album || '—')}</span>
       <span class="track-source">
         <span class="source-badge ${track.source}">${track.source === 'spotify' ? '●  Spotify' : track.source === 'soundcloud' ? '●  SoundCloud' : '●  Local'}</span>
       </span>
-      <span class="track-quality">${qualityHtml}</span>
       <span class="track-duration">${formatDuration(track.duration)}</span>
-      <span class="track-actions">${downloadBtn}</span>
+      <span class="${actionClass}">${actionHtml}</span>
     </div>
   `}).join('');
 
@@ -818,6 +823,22 @@ async function pollDownloads() {
     const data = await api.slskd.getDownloads();
     const transfers = flattenTransfers(data);
     renderDownloadsView(transfers);
+    
+    // Check for newly completed downloads
+    const currentCompleted = transfers.filter(t => isTerminalState(t.state) && isCompletedOk(t.state));
+    let hasNewCompletion = false;
+    for (const t of currentCompleted) {
+      if (!completedDownloadIds.has(t.id)) {
+        completedDownloadIds.add(t.id);
+        hasNewCompletion = true;
+      }
+    }
+    
+    // Refresh track list if new downloads completed
+    if (hasNewCompletion) {
+      await api.refreshLibrary();
+      loadTracks();
+    }
   } catch {
     // slskd not running
   }
