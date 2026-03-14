@@ -1,6 +1,6 @@
 // ─── slskd REST API Client ──────────────────────────────────
 import axios, { AxiosInstance } from "axios";
-import type { SlskdSearchResult } from "../../types";
+import type { SlskdSearchResult } from "../../types.js";
 
 interface ServerState {
   state: string;

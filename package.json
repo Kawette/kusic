@@ -2,10 +2,10 @@
   "name": "kusic",
   "version": "1.0.0",
   "description": "Agrégateur de playlists Spotify & SoundCloud",
+  "type": "module",
   "main": "dist/main/main.js",
   "scripts": {
-    "build": "tsc && npm run copy-renderer",
-    "copy-renderer": "node -e \"const fs=require('fs');const p=require('path');['index.html','styles.css','renderer.js'].forEach(f=>fs.copyFileSync(p.join('src/renderer',f),p.join('dist/renderer',f)))\" || mkdir dist\\renderer && copy src\\renderer\\*.* dist\\renderer\\",
+    "build": "node build.js",
     "watch": "tsc --watch",
     "start": "npm run build && electron .",
     "dev": "npm run build && electron . --dev"
@@ -21,6 +21,7 @@
     "axios": "^1.6.0",
     "electron-store": "^8.1.0",
     "extract-zip": "^2.0.1",
+    "music-metadata": "^11.12.3",
     "yaml": "^2.8.2"
   }
 }

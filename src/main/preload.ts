@@ -11,7 +11,7 @@ contextBridge.exposeInMainWorld("kusic", {
   getPlaylists: () => ipcRenderer.invoke("get-playlists"),
   addPlaylist: (url: string) => ipcRenderer.invoke("add-playlist", url),
   removePlaylist: (id: string) => ipcRenderer.invoke("remove-playlist", id),
-  refreshPlaylists: () => ipcRenderer.invoke("refresh-playlists"),
+  refreshLibrary: () => ipcRenderer.invoke("refresh-library"),
 
   // Tracks
   getTracks: (filters?: unknown) => ipcRenderer.invoke("get-tracks", filters),

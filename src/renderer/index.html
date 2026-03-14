@@ -49,24 +49,6 @@
             </svg>
             <span>Toutes les pistes</span>
           </button>
-          <button class="nav-btn" data-view="playlists">
-            <svg
-              width="18"
-              height="18"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-            >
-              <line x1="8" y1="6" x2="21" y2="6" />
-              <line x1="8" y1="12" x2="21" y2="12" />
-              <line x1="8" y1="18" x2="21" y2="18" />
-              <line x1="3" y1="6" x2="3.01" y2="6" />
-              <line x1="3" y1="12" x2="3.01" y2="12" />
-              <line x1="3" y1="18" x2="3.01" y2="18" />
-            </svg>
-            <span>Playlists</span>
-          </button>
           <button class="nav-btn" data-view="downloads">
             <svg
               width="18"
@@ -87,6 +69,24 @@
               style="display: none"
               >0</span
             >
+          </button>
+          <button class="nav-btn" data-view="playlists">
+            <svg
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <line x1="8" y1="6" x2="21" y2="6" />
+              <line x1="8" y1="12" x2="21" y2="12" />
+              <line x1="8" y1="18" x2="21" y2="18" />
+              <line x1="3" y1="6" x2="3.01" y2="6" />
+              <line x1="3" y1="12" x2="3.01" y2="12" />
+              <line x1="3" y1="18" x2="3.01" y2="18" />
+            </svg>
+            <span>Playlists</span>
           </button>
           <button class="nav-btn" data-view="settings">
             <svg
@@ -128,7 +128,7 @@
               <button
                 class="btn-secondary"
                 id="btn-refresh-tracks"
-                title="Rafraîchir toutes les playlists"
+                title="Synchroniser la bibliothèque"
               >
                 <svg
                   width="16"
@@ -170,6 +170,7 @@
               <option value="all">Toutes les sources</option>
               <option value="spotify">Spotify</option>
               <option value="soundcloud">SoundCloud</option>
+              <option value="local">Local</option>
             </select>
             <select id="sort-by" class="select-control">
               <option value="recent">Plus récent</option>
@@ -217,7 +218,7 @@
               <button
                 class="btn-secondary"
                 id="btn-refresh-playlists"
-                title="Rafraîchir toutes les playlists"
+                title="Synchroniser la bibliothèque"
               >
                 <svg
                   width="16"

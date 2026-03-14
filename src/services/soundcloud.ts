@@ -1,6 +1,6 @@
 // ─── SoundCloud Service ─────────────────────────────────────
 import axios from "axios";
-import type { Track, Playlist } from "../types";
+import type { Track, Playlist } from "../types.js";
 
 interface SoundCloudTrack {
   id: number;

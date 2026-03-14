@@ -1,11 +1,17 @@
 // ─── Kusic Main Process ─────────────────────────────────────
 import { app, BrowserWindow, ipcMain, dialog, shell } from "electron";
 import path from "path";
+import { fileURLToPath } from "url";
+import fs from "fs";
+import * as mm from "music-metadata";
 import Store from "electron-store";
-import { SpotifyService } from "../services/spotify";
-import { SoundCloudService } from "../services/soundcloud";
-import { SlskdManager } from "../services/slskd";
-import type { Playlist, Track, AppSettings, TrackFilters } from "../types";
+import { SpotifyService } from "../services/spotify.js";
+import { SoundCloudService } from "../services/soundcloud.js";
+import { SlskdManager } from "../services/slskd/index.js";
+import type { Playlist, Track, AppSettings, TrackFilters } from "../types.js";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 interface StoreSchema {
   playlists: Playlist[];
@@ -87,6 +93,109 @@ app.on("activate", () => {
   if (BrowserWindow.getAllWindows().length === 0) createWindow();
 });
 
+// ─── Local File Scanner ────────────────────────────────────────
+
+const AUDIO_EXTENSIONS = [".mp3", ".flac", ".wav", ".m4a", ".aac", ".ogg", ".wma"];
+
+async function scanLocalFiles(): Promise<Track[]> {
+  const libraryPath = store.get("soulseek").libraryPath;
+  console.log("[Kusic] Scanning local files in:", libraryPath);
+  
+  if (!libraryPath || !fs.existsSync(libraryPath)) {
+    console.log("[Kusic] Library path not configured or doesn't exist");
+    return [];
+  }
+
+  const filePaths: string[] = [];
+  
+  function scanDir(dir: string) {
+    try {
+      const entries = fs.readdirSync(dir, { withFileTypes: true });
+      for (const entry of entries) {
+        const fullPath = path.join(dir, entry.name);
+        if (entry.isDirectory() && !entry.name.startsWith(".")) {
+          scanDir(fullPath);
+        } else if (entry.isFile()) {
+          const ext = path.extname(entry.name).toLowerCase();
+          if (AUDIO_EXTENSIONS.includes(ext)) {
+            filePaths.push(fullPath);
+          }
+        }
+      }
+    } catch {
+      // Skip directories we can't read
+    }
+  }
+
+  scanDir(libraryPath);
+  
+  const tracks: Track[] = [];
+  for (const filePath of filePaths) {
+    const track = await parseAudioFile(filePath);
+    if (track) tracks.push(track);
+  }
+  
+  console.log(`[Kusic] Found ${tracks.length} local audio files`);
+  return tracks;
+}
+
+async function parseAudioFile(filePath: string): Promise<Track | null> {
+  try {
+    const metadata = await mm.parseFile(filePath);
+    const stats = fs.statSync(filePath);
+    const filename = path.basename(filePath);
+    const nameWithoutExt = path.basename(filename, path.extname(filename));
+    
+    console.log(`[Kusic] Parsing: ${filename}`);
+    console.log(`[Kusic]   - Artist tag: ${metadata.common.artist || "(none)"}`);
+    console.log(`[Kusic]   - Title tag: ${metadata.common.title || "(none)"}`);
+    console.log(`[Kusic]   - Album tag: ${metadata.common.album || "(none)"}`);
+    console.log(`[Kusic]   - Duration: ${metadata.format.duration || 0}s`);
+    
+    // Use metadata if available, fallback to filename parsing
+    let artist = metadata.common.artist || "";
+    let title = metadata.common.title || "";
+    let album = metadata.common.album || path.basename(path.dirname(filePath));
+    
+    // Fallback: parse "Artist - Title" from filename
+    if (!artist || !title) {
+      const separators = [" - ", " – ", " — "];
+      for (const sep of separators) {
+        if (nameWithoutExt.includes(sep)) {
+          const parts = nameWithoutExt.split(sep);
+          if (!artist) artist = parts[0].trim();
+          if (!title) title = parts.slice(1).join(sep).trim();
+          break;
+        }
+      }
+      if (!title) title = nameWithoutExt;
+      if (!artist) artist = "Artiste inconnu";
+    }
+    
+    // Extract artwork as base64 data URL
+    let artwork = "";
+    if (metadata.common.picture && metadata.common.picture.length > 0) {
+      const pic = metadata.common.picture[0];
+      const base64 = Buffer.from(pic.data).toString("base64");
+      artwork = `data:${pic.format};base64,${base64}`;
+    }
+    
+    return {
+      id: `local-${Buffer.from(filePath).toString("base64").slice(0, 20)}`,
+      source: "local",
+      title,
+      artist,
+      album,
+      artwork,
+      duration: Math.round((metadata.format.duration || 0) * 1000),
+      addedAt: stats.mtimeMs,
+    };
+  } catch (err) {
+    console.error(`[Kusic] Failed to parse ${filePath}:`, err);
+    return null;
+  }
+}
+
 // ─── IPC Handlers ──────────────────────────────────────────────
 
 ipcMain.handle(
@@ -141,21 +250,14 @@ ipcMain.handle("add-playlist", async (_, url: string): Promise<Playlist> => {
   // Merge tracks into unified list
   const allTracks = store.get("tracks");
   for (const track of playlistData.tracks) {
-    const duplicate = allTracks.find(
-      (t) =>
-        t.title.toLowerCase() === track.title.toLowerCase() &&
-        t.artist.toLowerCase() === track.artist.toLowerCase(),
-    );
-    if (!duplicate) {
-      allTracks.push(track);
-    }
+    allTracks.push(track);
   }
   store.set("tracks", allTracks);
 
   return playlistData;
 });
 
-ipcMain.handle("refresh-playlists", async () => {
+ipcMain.handle("refresh-library", async () => {
   const playlists = store.get("playlists");
   const refreshed: Playlist[] = [];
 
@@ -191,19 +293,21 @@ ipcMain.handle("refresh-playlists", async () => {
 
   // Rebuild unified track list
   const allTracks: Track[] = [];
-  const seen = new Set<string>();
   for (const pl of refreshed) {
     for (const track of pl.tracks) {
-      const key = `${track.title.toLowerCase()}|${track.artist.toLowerCase()}`;
-      if (!seen.has(key)) {
-        seen.add(key);
-        allTracks.push(track);
-      }
+      allTracks.push(track);
     }
   }
+
+  // Scan local files from library
+  const localTracks = await scanLocalFiles();
+  for (const track of localTracks) {
+    allTracks.push(track);
+  }
+
   store.set("tracks", allTracks);
 
-  return { playlists: refreshed, totalTracks: allTracks.length };
+  return { playlists: refreshed, totalTracks: allTracks.length, localTracks: localTracks.length };
 });
 
 ipcMain.handle("remove-playlist", (_, playlistId: string) => {
@@ -269,6 +373,7 @@ ipcMain.handle("get-stats", () => {
     totalTracks: tracks.length,
     spotifyTracks: tracks.filter((t) => t.source === "spotify").length,
     soundcloudTracks: tracks.filter((t) => t.source === "soundcloud").length,
+    localTracks: tracks.filter((t) => t.source === "local").length,
   };
 });
 

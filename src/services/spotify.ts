@@ -1,6 +1,6 @@
 // ─── Spotify Service ────────────────────────────────────────
 import axios from "axios";
-import type { Track, Playlist } from "../types";
+import type { Track, Playlist } from "../types.js";
 
 export class SpotifyService {
   private clientId: string;

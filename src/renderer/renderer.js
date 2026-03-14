@@ -110,7 +110,7 @@ function renderTracks(tracks) {
       <span class="track-artist" title="${escapeHtml(track.artist)}">${escapeHtml(track.artist)}</span>
       <span class="track-album" title="${escapeHtml(track.album || '')}">${escapeHtml(track.album || '—')}</span>
       <span class="track-source">
-        <span class="source-badge ${track.source}">${track.source === 'spotify' ? '●  Spotify' : '●  SoundCloud'}</span>
+        <span class="source-badge ${track.source}">${track.source === 'spotify' ? '●  Spotify' : track.source === 'soundcloud' ? '●  SoundCloud' : '●  Local'}</span>
       </span>
       <span class="track-duration">${formatDuration(track.duration)}</span>
       <span class="track-actions">
@@ -146,8 +146,9 @@ async function handleRefresh(btn) {
   btn.innerHTML = '<svg class="spinner" width="16" height="16" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="3" stroke-dasharray="30 70"/></svg>';
 
   try {
-    const result = await api.refreshPlaylists();
-    showToast(`Playlists rafraîchies (${result.totalTracks} pistes)`, 'success');
+    const result = await api.refreshLibrary();
+    const localMsg = result.localTracks > 0 ? `, ${result.localTracks} locales` : '';
+    showToast(`Bibliothèque synchronisée (${result.totalTracks} pistes${localMsg})`, 'success');
     loadPlaylists();
     loadTracks();
     updateStats();

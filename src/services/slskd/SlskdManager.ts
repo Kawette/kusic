@@ -7,9 +7,9 @@ import fs from "fs";
 import https from "https";
 import http from "http";
 import { app } from "electron";
-import { SlskdConfig } from "./SlskdConfig";
-import { SlskdAPI } from "./SlskdAPI";
-import type { SlskdStatus, SoulseekConfig } from "../../types";
+import { SlskdConfig } from "./SlskdConfig.js";
+import { SlskdAPI } from "./SlskdAPI.js";
+import type { SlskdStatus, SoulseekConfig } from "../../types.js";
 
 const SLSKD_VERSION = "0.24.5";
 const SUPPORTED_PLATFORM = "win32";

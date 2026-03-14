@@ -2,7 +2,7 @@
 
 export interface Track {
   id: string;
-  source: "spotify" | "soundcloud";
+  source: "spotify" | "soundcloud" | "local";
   title: string;
   artist: string;
   album: string;
@@ -52,7 +52,7 @@ export interface AppStats {
 
 export interface TrackFilters {
   search?: string;
-  source?: "all" | "spotify" | "soundcloud";
+  source?: "all" | "spotify" | "soundcloud" | "local";
   sortBy?: "recent" | "title" | "artist" | "duration";
 }
 
