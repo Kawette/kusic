@@ -694,8 +694,38 @@ ipcMain.handle(
         }
       }
 
-      // Remove the unknown track from store (it will be re-added as linked on next refresh)
-      const updatedTracks = tracks.filter((t) => t.id !== unknownTrackId);
+      // Update tracks store: remove unknown track and merge quality info with target track
+      let targetFound = false;
+      const updatedTracks = tracks
+        .filter((t) => t.id !== unknownTrackId)
+        .map((t) => {
+          if (t.id === targetTrackId) {
+            targetFound = true;
+            // Merge quality info from unknown track to the target track
+            return {
+              ...t,
+              format: unknownTrack.format,
+              bitRate: unknownTrack.bitRate,
+              sampleRate: unknownTrack.sampleRate,
+              bitDepth: unknownTrack.bitDepth,
+              filePath: finalPath,
+            };
+          }
+          return t;
+        });
+      
+      // If target track wasn't in the store, add it with quality info
+      if (!targetFound) {
+        updatedTracks.push({
+          ...targetTrack,
+          format: unknownTrack.format,
+          bitRate: unknownTrack.bitRate,
+          sampleRate: unknownTrack.sampleRate,
+          bitDepth: unknownTrack.bitDepth,
+          filePath: finalPath,
+        });
+      }
+      
       store.set("tracks", updatedTracks);
 
       console.log(
