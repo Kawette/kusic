@@ -690,6 +690,32 @@ const slskdSearchStatus = $('#slskd-search-status');
 
 let currentSearchId = null;
 let searchPollInterval = null;
+let currentSearchQuery = null; // Track current query for background polling
+
+// ─── Search Cache ───────────────────────────────────────────
+const SEARCH_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+const searchCache = new Map(); // normalizedQuery -> { results, timestamp }
+const backgroundSearches = new Map(); // normalizedQuery -> { searchId, interval }
+
+function normalizeQuery(query) {
+  return query.toLowerCase().trim().replace(/\s+/g, ' ');
+}
+
+function getCachedResults(query) {
+  const key = normalizeQuery(query);
+  const cached = searchCache.get(key);
+  if (!cached) return null;
+  if (Date.now() - cached.timestamp > SEARCH_CACHE_TTL) {
+    searchCache.delete(key);
+    return null;
+  }
+  return cached.results;
+}
+
+function setCachedResults(query, results) {
+  const key = normalizeQuery(query);
+  searchCache.set(key, { results, timestamp: Date.now() });
+}
 
 window.openSlskdSearch = async function(artist, title, trackId) {
   const status = await api.slskd.getStatus();
@@ -729,8 +755,29 @@ slskdSearchQuery.addEventListener('keydown', (e) => {
 async function executeSlskdSearch(query) {
   // Block if already searching
   if (isSearching) return;
+  
+  // Check cache first
+  const cached = getCachedResults(query);
+  if (cached) {
+    slskdLoading.style.display = 'none';
+    slskdNoResults.style.display = 'none';
+    slskdSearchStatus.textContent = `${cached.length} résultats (cache)`;
+    renderSlskdResults(cached, false);
+    return;
+  }
+  
+  // Check if there's a background search for this query
+  const key = normalizeQuery(query);
+  if (backgroundSearches.has(key)) {
+    // Wait for background search - show loading, results will come via cache
+    slskdSearchStatus.textContent = 'Recherche en cours...';
+    slskdLoading.style.display = 'flex';
+    return;
+  }
+  
   isSearching = true;
   slskdSearchBtn.disabled = true;
+  currentSearchQuery = query;
   
   slskdSearchStatus.textContent = 'Recherche...';
   slskdLoading.style.display = 'flex';
@@ -743,39 +790,79 @@ async function executeSlskdSearch(query) {
     currentSearchId = id;
     let lastCount = 0;
     let tick = 0;
+    let hasFiles = false;
+    const searchQuery = query; // Capture for closure
     
-    searchPollInterval = setInterval(async () => {
+    const pollFn = async (isBackground = false) => {
       try {
         tick++;
-        const loadFiles = tick % 4 === 0;
-        const data = await api.slskd.getSearchResults(currentSearchId, loadFiles);
+        // Load files every 2 ticks (1s) once we know there are files, or check every 4 ticks initially
+        const loadFiles = hasFiles ? (tick % 2 === 0) : (tick % 4 === 0);
+        const data = await api.slskd.getSearchResults(id, loadFiles);
         
         if (data.fileCount > 0) {
-          slskdSearchStatus.textContent = `${data.fileCount} fichiers...`;
+          hasFiles = true;
+          if (!isBackground) {
+            slskdSearchStatus.textContent = `${data.fileCount} fichiers...`;
+          }
         }
         
         if (loadFiles && data.results.length > lastCount) {
           lastCount = data.results.length;
-          renderSlskdResults(data.results, !data.isComplete);
+          if (!isBackground) {
+            renderSlskdResults(data.results, !data.isComplete);
+          }
+          // Cache intermediate results
+          if (data.results.length > 0) {
+            setCachedResults(searchQuery, data.results);
+          }
         }
         
         if (data.isComplete) {
+          // Clean up
+          const bgKey = normalizeQuery(searchQuery);
+          const bg = backgroundSearches.get(bgKey);
+          if (bg) {
+            clearInterval(bg.interval);
+            backgroundSearches.delete(bgKey);
+          }
+          if (!isBackground && searchPollInterval) {
+            clearInterval(searchPollInterval);
+            searchPollInterval = null;
+            isSearching = false;
+            slskdSearchBtn.disabled = false;
+          }
+          // Cache final results
+          const final = await api.slskd.getSearchResults(id, true);
+          if (final.results.length > 0) {
+            setCachedResults(searchQuery, final.results);
+          }
+          if (!isBackground) {
+            slskdSearchStatus.textContent = final.results.length > 0 ? `${final.results.length} résultats` : 'Aucun résultat';
+            renderSlskdResults(final.results, false);
+          }
+        }
+      } catch (err) {
+        // Clean up on error
+        const bgKey = normalizeQuery(searchQuery);
+        const bg = backgroundSearches.get(bgKey);
+        if (bg) {
+          clearInterval(bg.interval);
+          backgroundSearches.delete(bgKey);
+        }
+        if (!isBackground && searchPollInterval) {
           clearInterval(searchPollInterval);
           searchPollInterval = null;
           isSearching = false;
           slskdSearchBtn.disabled = false;
-          // Charger les résultats finaux
-          const final = await api.slskd.getSearchResults(currentSearchId, true);
-          slskdSearchStatus.textContent = final.results.length > 0 ? `${final.results.length} résultats` : 'Aucun résultat';
-          renderSlskdResults(final.results, false);
         }
-      } catch (err) {
-        clearInterval(searchPollInterval);
-        searchPollInterval = null;
-        isSearching = false;
-        slskdSearchBtn.disabled = false;
       }
-    }, 500);
+    };
+    
+    searchPollInterval = setInterval(() => pollFn(false), 500);
+    // Store reference for background conversion
+    window._currentSearchPoll = { id, query: searchQuery, pollFn, tick: () => tick, hasFiles: () => hasFiles };
+    
   } catch (err) {
     isSearching = false;
     slskdSearchBtn.disabled = false;
@@ -844,12 +931,29 @@ window.downloadFromSlskd = async function(username, filename, size, btn) {
 
 function closeSlskdModal() {
   slskdModal.style.display = 'none';
-  if (searchPollInterval) {
+  
+  // Move current search to background instead of stopping it
+  if (searchPollInterval && window._currentSearchPoll) {
+    const { id, query, pollFn } = window._currentSearchPoll;
+    const key = normalizeQuery(query);
+    
+    // Stop foreground interval
     clearInterval(searchPollInterval);
     searchPollInterval = null;
+    
+    // Start background interval
+    const bgInterval = setInterval(() => pollFn(true), 500);
+    backgroundSearches.set(key, { searchId: id, interval: bgInterval });
+    
+    window._currentSearchPoll = null;
   }
+  
   currentSearchId = null;
   currentSearchTrackId = null;
+  currentSearchQuery = null;
+  // Reset search state to allow new searches
+  isSearching = false;
+  slskdSearchBtn.disabled = false;
 }
 
 $('#btn-close-slskd-modal').addEventListener('click', closeSlskdModal);
