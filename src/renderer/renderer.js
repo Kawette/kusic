@@ -742,6 +742,8 @@ let autoSearchQueue = [];
 let autoSearchRunning = 0;
 let autoSearchCompleted = 0;
 let autoSearchTotal = 0;
+let autoSearchInFlight = new Map(); // query -> searchId, tracks currently being searched
+let autoSearchTimers = []; // pending setTimeout IDs for staggered launches
 
 const autoSearchBtn = $('#btn-auto-search');
 const autoSearchStatus = $('#auto-search-status');
@@ -769,12 +771,15 @@ async function startAutoSearch() {
   const tracks = await api.getTracks({ source: 'all' });
   const tracksToSearch = tracks.filter(t => {
     if (t.format) return false; // Has local file
-    if (t.source !== 'spotify' && t.source !== 'soundcloud') return false; // Only playlist tracks
+    if (t.source !== 'spotify' && t.source !== 'soundcloud') return false;
     const query = `${t.artist} ${t.title}`.trim();
-    return !hasCachedResults(query);
+    if (hasCachedResults(query)) return false;
+    // Skip queries already in flight from a previous run
+    if (autoSearchInFlight.has(normalizeQuery(query))) return false;
+    return true;
   });
   
-  if (tracksToSearch.length === 0) {
+  if (tracksToSearch.length === 0 && autoSearchInFlight.size === 0) {
     showToast('Toutes les pistes sont déjà en cache', 'success');
     return;
   }
@@ -785,25 +790,33 @@ async function startAutoSearch() {
     title: t.title,
     query: `${t.artist} ${t.title}`.trim()
   }));
-  autoSearchRunning = 0;
+  autoSearchRunning = autoSearchInFlight.size; // Count already in-flight
   autoSearchCompleted = 0;
-  autoSearchTotal = autoSearchQueue.length;
+  autoSearchTotal = autoSearchQueue.length + autoSearchInFlight.size;
   
   autoSearchBtn.classList.add('active');
+  autoSearchText.textContent = 'Stop';
   updateAutoSearchStatus();
   
-  // Start initial batch with 5s stagger
-  for (let i = 0; i < AUTO_SEARCH_MAX_CONCURRENT && autoSearchQueue.length > 0; i++) {
-    setTimeout(() => processNextAutoSearch(), i * AUTO_SEARCH_DELAY);
+  // Stagger initial batch with 5s between each launch
+  const toLaunch = Math.min(AUTO_SEARCH_MAX_CONCURRENT - autoSearchInFlight.size, autoSearchQueue.length);
+  for (let i = 0; i < toLaunch; i++) {
+    const timer = setTimeout(() => processNextAutoSearch(), i * AUTO_SEARCH_DELAY);
+    autoSearchTimers.push(timer);
   }
 }
 
 function stopAutoSearch() {
   autoSearchActive = false;
   autoSearchQueue = [];
+  // Clear pending launch timers
+  for (const t of autoSearchTimers) clearTimeout(t);
+  autoSearchTimers = [];
   autoSearchBtn.classList.remove('active');
+  autoSearchText.textContent = 'Recherche auto';
   autoSearchStatus.textContent = '';
   showToast(`Recherche arrêtée (${autoSearchCompleted}/${autoSearchTotal})`, 'info');
+  // Note: in-flight searches keep running in background, autoSearchInFlight is preserved
 }
 
 function updateAutoSearchStatus() {
@@ -819,6 +832,7 @@ async function processNextAutoSearch() {
       autoSearchActive = false;
       autoSearchBtn.classList.remove('active');
       autoSearchStatus.textContent = '';
+      autoSearchText.textContent = 'Recherche auto';
       showToast(`Recherche terminée (${autoSearchCompleted} pistes)`, 'success');
       loadTracks(); // Refresh to show cache indicators
     }
@@ -826,11 +840,19 @@ async function processNextAutoSearch() {
   }
   
   const track = autoSearchQueue.shift();
+  const key = normalizeQuery(track.query);
+  
+  // Skip if already in flight (safety check)
+  if (autoSearchInFlight.has(key)) {
+    processNextAutoSearch();
+    return;
+  }
+  
   autoSearchRunning++;
   
   try {
-    // Start the search
     const { id } = await api.slskd.search(track.query);
+    autoSearchInFlight.set(key, id);
     
     // Poll until complete
     await pollAutoSearch(id, track.query);
@@ -839,13 +861,15 @@ async function processNextAutoSearch() {
     console.error('Auto search error:', err);
   }
   
+  autoSearchInFlight.delete(key);
   autoSearchRunning--;
   autoSearchCompleted++;
   updateAutoSearchStatus();
   
-  // Wait 2s then start next search
+  // Wait 5s then start next search
   if (autoSearchActive) {
-    setTimeout(() => processNextAutoSearch(), AUTO_SEARCH_DELAY);
+    const timer = setTimeout(() => processNextAutoSearch(), AUTO_SEARCH_DELAY);
+    autoSearchTimers.push(timer);
   }
 }
 
