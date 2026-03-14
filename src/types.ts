@@ -2,7 +2,7 @@
 
 export interface Track {
   id: string;
-  source: "spotify" | "soundcloud" | "local";
+  source: "spotify" | "soundcloud" | "local" | "unknown";
   title: string;
   artist: string;
   album: string;
@@ -18,6 +18,8 @@ export interface Track {
   bitRate?: number;
   sampleRate?: number;
   bitDepth?: number;
+  filePath?: string;
+  linkedTrackId?: string;  // KUSIC_TRACK_ID for linking to playlist track
 }
 
 export interface Playlist {
@@ -57,7 +59,7 @@ export interface AppStats {
 
 export interface TrackFilters {
   search?: string;
-  source?: "all" | "spotify" | "soundcloud" | "local";
+  source?: "all" | "spotify" | "soundcloud" | "local" | "unknown";
   sortBy?: "recent" | "title" | "artist" | "duration";
 }
 

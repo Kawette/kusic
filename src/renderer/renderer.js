@@ -5,6 +5,9 @@ const api = window.kusic;
 
 // ─── State ──────────────────────────────────────────────────
 let currentView = 'tracks';
+let completedDownloadIds = new Set();
+let currentSearchTrackId = null;  // Track ID being searched for download
+let downloadTrackMap = new Map(); // Map download filename -> playlist trackId
 
 // ─── DOM References ─────────────────────────────────────────
 const $ = (sel) => document.querySelector(sel);
@@ -99,18 +102,19 @@ function renderTracks(tracks) {
   tracksEmpty.style.display = 'none';
   
   const html = tracks.map((track, i) => {
-    const downloadBtn = track.source !== 'local' ? `
-        <button class="track-download-btn" onclick="openSlskdSearch('${escapeJs(track.artist)}', '${escapeJs(track.title)}')" title="Télécharger via Soulseek">
+    const hasLocalFile = !!track.format;
+    const downloadBtn = `
+        <button class="track-download-btn" onclick="openSlskdSearch('${escapeJs(track.artist)}', '${escapeJs(track.title)}', '${escapeJs(track.id)}')" title="Télécharger via Soulseek">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
           </svg>
         </button>
-      ` : '';
+      `;
     
-    // Format action content: quality for local files, download button for others
+    // Format action content: quality if has local file, download button otherwise
     let actionHtml = '';
     let actionClass = 'track-actions';
-    if (track.source === 'local' && track.format) {
+    if (hasLocalFile) {
       const fmt = track.format.toUpperCase();
       const badgeClass = ['FLAC', 'MP3', 'WAV'].includes(fmt) ? fmt.toLowerCase() : 'other';
       const isLossless = ['FLAC', 'WAV', 'ALAC', 'APE'].includes(fmt);
@@ -126,6 +130,15 @@ function renderTracks(tracks) {
       actionHtml = downloadBtn;
     }
     
+    // Source badge label
+    const sourceLabels = {
+      spotify: '●  Spotify',
+      soundcloud: '●  SoundCloud',
+      local: '●  Local',
+      unknown: '●  Inconnu'
+    };
+    const sourceLabel = sourceLabels[track.source] || '●  Inconnu';
+    
     return `
     <div class="track-row" data-track-id="${track.id}">
       <span class="track-num">${i + 1}</span>
@@ -139,7 +152,7 @@ function renderTracks(tracks) {
       </div>
       <span class="track-album" title="${escapeHtml(track.album || '')}">${escapeHtml(track.album || '—')}</span>
       <span class="track-source">
-        <span class="source-badge ${track.source}">${track.source === 'spotify' ? '●  Spotify' : track.source === 'soundcloud' ? '●  SoundCloud' : '●  Local'}</span>
+        <span class="source-badge ${track.source}">${sourceLabel}</span>
       </span>
       <span class="track-duration">${formatDuration(track.duration)}</span>
       <span class="${actionClass}">${actionHtml}</span>
@@ -670,12 +683,15 @@ const slskdSearchStatus = $('#slskd-search-status');
 let currentSearchId = null;
 let searchPollInterval = null;
 
-window.openSlskdSearch = async function(artist, title) {
+window.openSlskdSearch = async function(artist, title, trackId) {
   const status = await api.slskd.getStatus();
   if (!status.running) {
     showToast('Démarrez Soulseek dans les paramètres', 'error');
     return;
   }
+  
+  // Store the trackId for linking when download starts
+  currentSearchTrackId = trackId || null;
   
   const query = `${artist} ${title}`.trim();
   slskdSearchQuery.textContent = query;
@@ -766,6 +782,12 @@ window.downloadFromSlskd = async function(username, filename, size, btn) {
   btn.innerHTML = '<svg class="spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/></svg>';
   
   try {
+    // Store mapping between filename and playlist trackId for tagging after completion
+    if (currentSearchTrackId) {
+      const basename = filename.split(/[\\/]/).pop();
+      downloadTrackMap.set(basename, currentSearchTrackId);
+    }
+    
     await api.slskd.download(username, filename, size);
     startDownloadPolling();
     btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>';
@@ -785,6 +807,7 @@ function closeSlskdModal() {
     searchPollInterval = null;
   }
   currentSearchId = null;
+  currentSearchTrackId = null;
 }
 
 $('#btn-close-slskd-modal').addEventListener('click', closeSlskdModal);
@@ -831,6 +854,23 @@ async function pollDownloads() {
       if (!completedDownloadIds.has(t.id)) {
         completedDownloadIds.add(t.id);
         hasNewCompletion = true;
+        
+        // Tag the downloaded file with playlist metadata
+        const basename = t.filename.split(/[\\/]/).pop();
+        const trackId = downloadTrackMap.get(basename);
+        if (trackId) {
+          try {
+            const result = await api.tagDownloadedFile(basename, trackId);
+            if (result.success) {
+              console.log(`[Kusic] Tagged ${basename} with track ${trackId}`);
+            } else {
+              console.warn(`[Kusic] Failed to tag ${basename}: ${result.error}`);
+            }
+          } catch (err) {
+            console.error(`[Kusic] Error tagging ${basename}:`, err);
+          }
+          downloadTrackMap.delete(basename);
+        }
       }
     }
     

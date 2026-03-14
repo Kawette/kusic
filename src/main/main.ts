@@ -4,6 +4,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import fs from "fs";
 import * as mm from "music-metadata";
+import * as taglib from "node-taglib-sharp";
 import Store from "electron-store";
 import { SpotifyService } from "../services/spotify.js";
 import { SoundCloudService } from "../services/soundcloud.js";
@@ -191,9 +192,21 @@ async function parseAudioFile(filePath: string): Promise<Track | null> {
     const sampleRate = metadata.format.sampleRate;
     const bitDepth = metadata.format.bitsPerSample;
 
+    // Read KUSIC_TRACK_ID from comment field (format: [KUSIC:trackId] comment)
+    let linkedTrackId: string | undefined;
+    const commentRaw = metadata.common.comment?.[0];
+    const comment = typeof commentRaw === 'string' ? commentRaw : (commentRaw as { text?: string })?.text || '';
+    const kusicMatch = comment.match(/\[KUSIC:([^\]]+)\]/);
+    if (kusicMatch) {
+      linkedTrackId = kusicMatch[1];
+    }
+
+    // Determine source based on linkedTrackId
+    let source: "local" | "unknown" = linkedTrackId ? "local" : "unknown";
+
     return {
       id: `local-${Buffer.from(filePath).toString("base64").slice(0, 20)}`,
-      source: "local",
+      source,
       title,
       artist,
       album,
@@ -204,10 +217,60 @@ async function parseAudioFile(filePath: string): Promise<Track | null> {
       bitRate,
       sampleRate,
       bitDepth,
+      filePath,
+      linkedTrackId,
     };
   } catch (err) {
     console.error(`[Kusic] Failed to parse ${filePath}:`, err);
     return null;
+  }
+}
+
+// ─── Metadata Writing Functions ────────────────────────────────
+
+interface MergedMetadata {
+  title: string;
+  artist: string;
+  album: string;
+  artwork: string;
+  linkedTrackId: string;
+}
+
+function mergeMetadata(playlistTrack: Track, fileMetadata: Partial<Track>): MergedMetadata {
+  return {
+    title: playlistTrack.title || fileMetadata.title || "",
+    artist: playlistTrack.artist || fileMetadata.artist || "",
+    album: playlistTrack.album || fileMetadata.album || "",
+    artwork: playlistTrack.artwork || fileMetadata.artwork || "",
+    linkedTrackId: playlistTrack.id,
+  };
+}
+
+async function writeMetadataToFile(filePath: string, metadata: MergedMetadata): Promise<boolean> {
+  try {
+    const file = taglib.File.createFromPath(filePath);
+    
+    // Write standard tags
+    file.tag.title = metadata.title;
+    file.tag.performers = [metadata.artist];
+    file.tag.album = metadata.album;
+    
+    // Store KUSIC_TRACK_ID in the comment field with a prefix
+    // This is a cross-format compatible approach
+    const existingComment = file.tag.comment || '';
+    const kusicPrefix = '[KUSIC:';
+    if (!existingComment.includes(kusicPrefix)) {
+      file.tag.comment = `${kusicPrefix}${metadata.linkedTrackId}] ${existingComment}`.trim();
+    }
+    
+    file.save();
+    file.dispose();
+    
+    console.log(`[Kusic] Wrote metadata to ${filePath}`);
+    return true;
+  } catch (err) {
+    console.error(`[Kusic] Failed to write metadata to ${filePath}:`, err);
+    return false;
   }
 }
 
@@ -262,10 +325,31 @@ ipcMain.handle("add-playlist", async (_, url: string): Promise<Playlist> => {
   playlists.push(playlistData);
   store.set("playlists", playlists);
 
-  // Merge tracks into unified list
+  // Scan local files to check for linked tracks
+  const localTracks = await scanLocalFiles();
+  const linkedLocalFiles = new Map<string, Track>();
+  for (const localTrack of localTracks) {
+    if (localTrack.linkedTrackId) {
+      linkedLocalFiles.set(localTrack.linkedTrackId, localTrack);
+    }
+  }
+
+  // Merge tracks into unified list with local file info
   const allTracks = store.get("tracks");
   for (const track of playlistData.tracks) {
-    allTracks.push(track);
+    const linkedLocal = linkedLocalFiles.get(track.id);
+    if (linkedLocal) {
+      allTracks.push({
+        ...track,
+        format: linkedLocal.format,
+        bitRate: linkedLocal.bitRate,
+        sampleRate: linkedLocal.sampleRate,
+        bitDepth: linkedLocal.bitDepth,
+        filePath: linkedLocal.filePath,
+      });
+    } else {
+      allTracks.push(track);
+    }
   }
   store.set("tracks", allTracks);
 
@@ -306,18 +390,81 @@ ipcMain.handle("refresh-library", async () => {
 
   store.set("playlists", refreshed);
 
-  // Rebuild unified track list
+  // Scan local files from library
+  const localTracks = await scanLocalFiles();
+  console.log(`[Kusic] Scanned ${localTracks.length} local files`);
+  
+  // Create a map of linkedTrackId -> local file data for merging
+  const linkedLocalFiles = new Map<string, Track>();
+  const orphanedLocalTracks: Track[] = [];
+  
+  for (const localTrack of localTracks) {
+    if (localTrack.linkedTrackId) {
+      linkedLocalFiles.set(localTrack.linkedTrackId, localTrack);
+      console.log(`[Kusic] Linked file: ${localTrack.filePath} -> ${localTrack.linkedTrackId}`);
+    } else {
+      orphanedLocalTracks.push(localTrack);
+    }
+  }
+  
+  console.log(`[Kusic] Found ${linkedLocalFiles.size} linked files, ${orphanedLocalTracks.length} orphaned`);
+
+  // Rebuild unified track list with merged data
   const allTracks: Track[] = [];
+  const matchedLinkedIds = new Set<string>();
+  
   for (const pl of refreshed) {
     for (const track of pl.tracks) {
-      allTracks.push(track);
+      // Check if there's a linked local file for this track
+      const linkedLocal = linkedLocalFiles.get(track.id);
+      if (linkedLocal) {
+        matchedLinkedIds.add(track.id);
+        console.log(`[Kusic] Merging track ${track.title} with local file`);
+        // Merge: keep playlist metadata, add local file quality info
+        allTracks.push({
+          ...track,
+          format: linkedLocal.format,
+          bitRate: linkedLocal.bitRate,
+          sampleRate: linkedLocal.sampleRate,
+          bitDepth: linkedLocal.bitDepth,
+          filePath: linkedLocal.filePath,
+        });
+      } else {
+        // Ensure no stale local file data - push clean track
+        allTracks.push({
+          id: track.id,
+          source: track.source,
+          title: track.title,
+          artist: track.artist,
+          album: track.album,
+          artwork: track.artwork,
+          duration: track.duration,
+          addedAt: track.addedAt,
+          spotifyUrl: track.spotifyUrl,
+          soundcloudUrl: track.soundcloudUrl,
+          previewUrl: track.previewUrl,
+          streamUrl: track.streamUrl,
+          // Explicitly NO format, bitRate, sampleRate, bitDepth, filePath
+        });
+      }
     }
   }
 
-  // Scan local files from library
-  const localTracks = await scanLocalFiles();
-  for (const track of localTracks) {
+  // Add orphaned local files (unknown source)
+  for (const track of orphanedLocalTracks) {
     allTracks.push(track);
+  }
+
+  // Add linked files whose playlists were removed (convert to local orphan)
+  for (const [linkedId, localTrack] of linkedLocalFiles) {
+    if (!matchedLinkedIds.has(linkedId)) {
+      // Playlist was removed, convert to local orphan
+      allTracks.push({
+        ...localTrack,
+        source: "local" as const,
+        linkedTrackId: undefined, // Clear the stale link
+      });
+    }
   }
 
   store.set("tracks", allTracks);
@@ -328,6 +475,73 @@ ipcMain.handle("refresh-library", async () => {
     localTracks: localTracks.length,
   };
 });
+
+// Tag a downloaded file with playlist track metadata
+ipcMain.handle("tag-downloaded-file", async (_, filename: string, trackId: string) => {
+  try {
+    const libraryPath = store.get("soulseek").libraryPath;
+    if (!libraryPath) {
+      return { success: false, error: "Library path not configured" };
+    }
+
+    // Find the file in library (slskd might put it in subdirectories)
+    const filePath = await findFileInLibrary(libraryPath, filename);
+    if (!filePath) {
+      return { success: false, error: "File not found in library" };
+    }
+
+    // Find the playlist track
+    const playlists = store.get("playlists");
+    let playlistTrack: Track | null = null;
+    for (const pl of playlists) {
+      const track = pl.tracks.find(t => t.id === trackId);
+      if (track) {
+        playlistTrack = track;
+        break;
+      }
+    }
+
+    if (!playlistTrack) {
+      return { success: false, error: "Playlist track not found" };
+    }
+
+    // Read current file metadata
+    const fileMetadata = await parseAudioFile(filePath);
+    if (!fileMetadata) {
+      return { success: false, error: "Could not read file metadata" };
+    }
+
+    // Merge and write
+    const merged = mergeMetadata(playlistTrack, fileMetadata);
+    const success = await writeMetadataToFile(filePath, merged);
+
+    return { success, filePath };
+  } catch (err) {
+    console.error("[Kusic] tag-downloaded-file error:", err);
+    return { success: false, error: (err as Error).message };
+  }
+});
+
+async function findFileInLibrary(libraryPath: string, filename: string): Promise<string | null> {
+  const searchRecursive = (dir: string): string | null => {
+    try {
+      const entries = fs.readdirSync(dir, { withFileTypes: true });
+      for (const entry of entries) {
+        const fullPath = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          const found = searchRecursive(fullPath);
+          if (found) return found;
+        } else if (entry.name === filename) {
+          return fullPath;
+        }
+      }
+    } catch (err) {
+      // Skip inaccessible directories
+    }
+    return null;
+  };
+  return searchRecursive(libraryPath);
+}
 
 ipcMain.handle("remove-playlist", (_, playlistId: string) => {
   let playlists = store.get("playlists");

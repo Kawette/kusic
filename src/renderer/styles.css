@@ -475,6 +475,11 @@ a:hover {
   color: #a0a0ff;
 }
 
+.source-badge.unknown {
+  background: rgba(128, 128, 128, 0.15);
+  color: #888;
+}
+
 .track-duration {
   color: var(--text-muted);
   font-size: 12px;

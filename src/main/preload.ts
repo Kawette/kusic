@@ -16,6 +16,8 @@ contextBridge.exposeInMainWorld("kusic", {
   // Tracks
   getTracks: (filters?: unknown) => ipcRenderer.invoke("get-tracks", filters),
   getStats: () => ipcRenderer.invoke("get-stats"),
+  tagDownloadedFile: (filename: string, trackId: string) =>
+    ipcRenderer.invoke("tag-downloaded-file", filename, trackId),
 
   // Utils
   openExternal: (url: string) => ipcRenderer.invoke("open-external", url),

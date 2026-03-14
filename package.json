@@ -22,6 +22,7 @@
     "electron-store": "^8.1.0",
     "extract-zip": "^2.0.1",
     "music-metadata": "^11.12.3",
+    "node-taglib-sharp": "^6.0.1",
     "yaml": "^2.8.2"
   }
 }
