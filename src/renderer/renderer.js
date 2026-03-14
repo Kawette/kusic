@@ -733,6 +733,144 @@ function formatCacheTime(timestamp) {
   return date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
 }
 
+// ─── Auto Search ────────────────────────────────────────────
+const AUTO_SEARCH_MAX_CONCURRENT = 3;
+const AUTO_SEARCH_DELAY = 5000; // 5s between searches
+
+let autoSearchActive = false;
+let autoSearchQueue = [];
+let autoSearchRunning = 0;
+let autoSearchCompleted = 0;
+let autoSearchTotal = 0;
+
+const autoSearchBtn = $('#btn-auto-search');
+const autoSearchStatus = $('#auto-search-status');
+const autoSearchText = $('#auto-search-text');
+
+autoSearchBtn.addEventListener('click', toggleAutoSearch);
+
+async function toggleAutoSearch() {
+  if (autoSearchActive) {
+    stopAutoSearch();
+  } else {
+    await startAutoSearch();
+  }
+}
+
+async function startAutoSearch() {
+  // Check if slskd is running
+  const status = await api.slskd.getStatus();
+  if (!status.running) {
+    showToast('Démarrez Soulseek dans les paramètres', 'error');
+    return;
+  }
+  
+  // Get all tracks without local files and not in cache
+  const tracks = await api.getTracks({ source: 'all' });
+  const tracksToSearch = tracks.filter(t => {
+    if (t.format) return false; // Has local file
+    if (t.source !== 'spotify' && t.source !== 'soundcloud') return false; // Only playlist tracks
+    const query = `${t.artist} ${t.title}`.trim();
+    return !hasCachedResults(query);
+  });
+  
+  if (tracksToSearch.length === 0) {
+    showToast('Toutes les pistes sont déjà en cache', 'success');
+    return;
+  }
+  
+  autoSearchActive = true;
+  autoSearchQueue = tracksToSearch.map(t => ({
+    artist: t.artist,
+    title: t.title,
+    query: `${t.artist} ${t.title}`.trim()
+  }));
+  autoSearchRunning = 0;
+  autoSearchCompleted = 0;
+  autoSearchTotal = autoSearchQueue.length;
+  
+  autoSearchBtn.classList.add('active');
+  updateAutoSearchStatus();
+  
+  // Start initial batch with 5s stagger
+  for (let i = 0; i < AUTO_SEARCH_MAX_CONCURRENT && autoSearchQueue.length > 0; i++) {
+    setTimeout(() => processNextAutoSearch(), i * AUTO_SEARCH_DELAY);
+  }
+}
+
+function stopAutoSearch() {
+  autoSearchActive = false;
+  autoSearchQueue = [];
+  autoSearchBtn.classList.remove('active');
+  autoSearchStatus.textContent = '';
+  showToast(`Recherche arrêtée (${autoSearchCompleted}/${autoSearchTotal})`, 'info');
+}
+
+function updateAutoSearchStatus() {
+  if (autoSearchActive) {
+    autoSearchStatus.textContent = `${autoSearchCompleted}/${autoSearchTotal}`;
+  }
+}
+
+async function processNextAutoSearch() {
+  if (!autoSearchActive || autoSearchQueue.length === 0) {
+    if (autoSearchRunning === 0 && autoSearchActive) {
+      // All done
+      autoSearchActive = false;
+      autoSearchBtn.classList.remove('active');
+      autoSearchStatus.textContent = '';
+      showToast(`Recherche terminée (${autoSearchCompleted} pistes)`, 'success');
+      loadTracks(); // Refresh to show cache indicators
+    }
+    return;
+  }
+  
+  const track = autoSearchQueue.shift();
+  autoSearchRunning++;
+  
+  try {
+    // Start the search
+    const { id } = await api.slskd.search(track.query);
+    
+    // Poll until complete
+    await pollAutoSearch(id, track.query);
+    
+  } catch (err) {
+    console.error('Auto search error:', err);
+  }
+  
+  autoSearchRunning--;
+  autoSearchCompleted++;
+  updateAutoSearchStatus();
+  
+  // Wait 2s then start next search
+  if (autoSearchActive) {
+    setTimeout(() => processNextAutoSearch(), AUTO_SEARCH_DELAY);
+  }
+}
+
+async function pollAutoSearch(searchId, query) {
+  return new Promise((resolve) => {
+    const poll = setInterval(async () => {
+      try {
+        const data = await api.slskd.getSearchResults(searchId, true);
+        
+        if (data.results.length > 0) {
+          setCachedResults(query, data.results);
+        }
+        
+        if (data.isComplete) {
+          clearInterval(poll);
+          resolve();
+        }
+      } catch (err) {
+        clearInterval(poll);
+        resolve();
+      }
+    }, 1000);
+  });
+}
+
 window.openSlskdSearch = async function(artist, title, trackId) {
   const status = await api.slskd.getStatus();
   if (!status.running) {

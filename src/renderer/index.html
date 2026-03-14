@@ -127,6 +127,38 @@
             <div class="view-header-actions">
               <button
                 class="btn-secondary"
+                id="btn-auto-search"
+                title="Recherche automatique"
+              >
+                <svg
+                  class="icon-play"
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <polygon points="5 3 19 12 5 21 5 3" />
+                </svg>
+                <svg
+                  class="icon-pause"
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  style="display: none"
+                >
+                  <rect x="6" y="4" width="4" height="16" />
+                  <rect x="14" y="4" width="4" height="16" />
+                </svg>
+                <span id="auto-search-text">Recherche auto</span>
+                <span id="auto-search-status"></span>
+              </button>
+              <button
+                class="btn-secondary"
                 id="btn-refresh-tracks"
                 title="Synchroniser la bibliothèque"
               >

@@ -300,6 +300,51 @@ a:hover {
   background: var(--bg-hover);
 }
 
+#btn-auto-search {
+  position: relative;
+  overflow: hidden;
+}
+
+#btn-auto-search.active {
+  background: transparent;
+  border-color: transparent;
+  color: var(--success);
+}
+
+#btn-auto-search.active::before {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: inherit;
+  padding: 2px;
+  background: conic-gradient(var(--success), transparent 40%, var(--success));
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  animation: border-spin 2s linear infinite;
+}
+
+@keyframes border-spin {
+  to { transform: rotate(360deg); }
+}
+
+#btn-auto-search.active:hover {
+  background: rgba(32, 178, 95, 0.1);
+}
+
+#btn-auto-search.active .icon-play {
+  display: none;
+}
+
+#btn-auto-search.active .icon-pause {
+  display: inline-block !important;
+}
+
+#auto-search-status {
+  font-size: 12px;
+  font-weight: 500;
+}
+
 .btn-icon {
   background: transparent;
   border: none;
