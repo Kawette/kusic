@@ -3,6 +3,7 @@ import { app, BrowserWindow, ipcMain, dialog, shell } from "electron";
 import path from "path";
 import { fileURLToPath } from "url";
 import fs from "fs";
+import crypto from "crypto";
 import * as mm from "music-metadata";
 import * as taglib from "node-taglib-sharp";
 import Store from "electron-store";
@@ -207,8 +208,11 @@ async function parseAudioFile(filePath: string): Promise<Track | null> {
     // Determine source based on linkedTrackId
     let source: "local" | "unknown" = linkedTrackId ? "local" : "unknown";
 
+    // Use hash of full path to ensure unique IDs for files in same directory
+    const pathHash = crypto.createHash('md5').update(filePath).digest('hex');
+    
     return {
-      id: `local-${Buffer.from(filePath).toString("base64").slice(0, 20)}`,
+      id: `local-${pathHash}`,
       source,
       title,
       artist,
@@ -530,13 +534,19 @@ ipcMain.handle(
       // Merge and write
       const merged = mergeMetadata(playlistTrack, fileMetadata);
       const success = await writeMetadataToFile(filePath, merged);
+      
+      console.log(`[Kusic] Download tagging:
+  - Original file: ${path.basename(filePath)}
+  - Track: ${playlistTrack.title} by ${playlistTrack.artist}`);
 
-      // Generate clean filename: "Title - Artist.ext"
+      // Generate clean filename: "Artist - Title.ext"
       const ext = path.extname(filePath);
       const cleanTitle = sanitizeFilename(playlistTrack.title);
       const cleanArtist = sanitizeFilename(playlistTrack.artist);
       const newFilename = `${cleanArtist} - ${cleanTitle}${ext}`;
       const targetPath = path.join(libraryPath, newFilename);
+      
+      console.log(`[Kusic] Target filename: ${newFilename}`);
 
       // Handle name conflicts
       let finalPath = targetPath;
@@ -562,6 +572,8 @@ ipcMain.handle(
         if (fileDir !== libraryPath) {
           cleanEmptyDirs(fileDir, libraryPath);
         }
+      } else {
+        console.log(`[Kusic] File already has correct name, no rename needed`);
       }
 
       return { success, filePath };
@@ -651,6 +663,11 @@ ipcMain.handle(
       }
 
       const filePath = unknownTrack.filePath;
+      
+      console.log(`[Kusic] Linking unknown track:`);
+      console.log(`  - Source file: ${filePath}`);
+      console.log(`  - Source format: ${unknownTrack.format}`);
+      console.log(`  - Target: ${targetTrack.title} by ${targetTrack.artist}`);
 
       // Write metadata with KUSIC tag
       const merged = mergeMetadata(targetTrack, unknownTrack);
@@ -685,13 +702,23 @@ ipcMain.handle(
       const normalizedFilePath = path.normalize(filePath).toLowerCase();
       const normalizedFinalPath = path.normalize(finalPath).toLowerCase();
       
+      console.log(`[Kusic] Rename check:`);
+      console.log(`  - Source: ${filePath}`);
+      console.log(`  - Dest: ${finalPath}`);
+      console.log(`  - Source exists before: ${fs.existsSync(filePath)}`);
+      
       if (normalizedFilePath !== normalizedFinalPath) {
         const fileDir = path.dirname(filePath);
         fs.renameSync(filePath, finalPath);
+        
+        console.log(`  - Source exists after rename: ${fs.existsSync(filePath)}`);
+        console.log(`  - Dest exists after rename: ${fs.existsSync(finalPath)}`);
 
         if (fileDir !== libraryPath) {
           cleanEmptyDirs(fileDir, libraryPath);
         }
+      } else {
+        console.log(`  - Paths identical, skipping rename`);
       }
 
       // Update tracks store: remove unknown track and merge quality info with target track
@@ -701,6 +728,9 @@ ipcMain.handle(
         .map((t) => {
           if (t.id === targetTrackId) {
             targetFound = true;
+            console.log(`[Kusic] Merging quality info:`);
+            console.log(`  - Existing track format: ${t.format}`);
+            console.log(`  - Unknown track format: ${unknownTrack.format}`);
             // Merge quality info from unknown track to the target track
             return {
               ...t,

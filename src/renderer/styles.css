@@ -968,7 +968,7 @@ a:hover {
 
 .slskd-search-btn {
   background: var(--accent);
-  border: none;
+  border: 1px solid var(--accent);
   border-radius: var(--radius);
   padding: 10px 14px;
   color: white;
@@ -1513,6 +1513,30 @@ a:hover {
 
 .identify-result-row:hover {
   background: var(--bg-hover);
+}
+
+.identify-result-row.linking {
+  opacity: 0.6;
+  background: var(--bg-hover);
+}
+
+.identify-result-row .linking-spinner {
+  display: none;
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--text-secondary);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  flex-shrink: 0;
+}
+
+.identify-result-row.linking .linking-spinner {
+  display: block;
+}
+
+.identify-result-row.linking .source-badge {
+  display: none;
 }
 
 .identify-result-thumb {

@@ -901,19 +901,27 @@ identifySearchInput.addEventListener('input', async (e) => {
   }
   
   identifyResultsList.innerHTML = results.map(t => `
-    <div class="identify-result-row" onclick="linkToTrack('${escapeJs(t.id)}')">
+    <div class="identify-result-row" data-target-id="${escapeJs(t.id)}" onclick="linkToTrack('${escapeJs(t.id)}', this)">
       <img class="identify-result-thumb" src="${t.artwork || ''}" alt="" onerror="this.style.display='none'">
       <div class="identify-result-info">
         <span class="identify-result-title">${escapeHtml(t.title)}</span>
         <span class="identify-result-artist">${escapeHtml(t.artist)}</span>
       </div>
       <span class="source-badge ${t.source}">${t.source === 'spotify' ? '● Spotify' : '● SoundCloud'}</span>
+      <span class="linking-spinner"></span>
     </div>
   `).join('');
 });
 
-window.linkToTrack = async function(targetTrackId) {
+window.linkToTrack = async function(targetTrackId, element) {
   if (!identifySourceTrackId) return;
+  
+  // Find the clicked row and show loading
+  const row = element?.closest('.identify-result-row') || document.querySelector(`[data-target-id="${targetTrackId}"]`);
+  if (row) {
+    row.classList.add('linking');
+    row.style.pointerEvents = 'none';
+  }
   
   try {
     const result = await api.linkUnknownToTrack(identifySourceTrackId, targetTrackId);
@@ -922,9 +930,17 @@ window.linkToTrack = async function(targetTrackId) {
       closeIdentifyModal();
       loadTracks();
     } else {
+      if (row) {
+        row.classList.remove('linking');
+        row.style.pointerEvents = '';
+      }
       showToast(`Erreur: ${result.error}`, 'error');
     }
   } catch (err) {
+    if (row) {
+      row.classList.remove('linking');
+      row.style.pointerEvents = '';
+    }
     showToast(`Erreur: ${err.message}`, 'error');
   }
 };
