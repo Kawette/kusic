@@ -872,6 +872,7 @@ ipcMain.handle("slskd-status", async () => {
 });
 
 ipcMain.handle("slskd-search", async (_, query: string) => {
+  console.log(`[Search] Starting search for: "${query}"`);
   if (!slskdManager || !slskdManager.isRunning) {
     throw new Error("slskd n'est pas démarré");
   }

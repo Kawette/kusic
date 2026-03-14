@@ -450,6 +450,16 @@ a:hover {
   opacity: 1;
 }
 
+.track-download-btn.cached {
+  opacity: 1;
+  color: var(--success);
+}
+
+.track-download-btn.cached:hover {
+  background: var(--success);
+  color: white;
+}
+
 .source-badge {
   display: inline-flex;
   align-items: center;

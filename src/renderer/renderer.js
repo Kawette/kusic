@@ -103,8 +103,10 @@ function renderTracks(tracks) {
   
   const html = tracks.map((track, i) => {
     const hasLocalFile = !!track.format;
+    const searchQuery = `${track.artist} ${track.title}`.trim();
+    const isCached = hasCachedResults(searchQuery);
     const downloadBtn = `
-        <button class="track-download-btn" onclick="openSlskdSearch('${escapeJs(track.artist)}', '${escapeJs(track.title)}', '${escapeJs(track.id)}')" title="Télécharger via Soulseek">
+        <button class="track-download-btn${isCached ? ' cached' : ''}" onclick="openSlskdSearch('${escapeJs(track.artist)}', '${escapeJs(track.title)}', '${escapeJs(track.id)}')" title="${isCached ? 'Résultats en cache' : 'Télécharger via Soulseek'}">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
           </svg>
@@ -709,12 +711,26 @@ function getCachedResults(query) {
     searchCache.delete(key);
     return null;
   }
-  return cached.results;
+  return { results: cached.results, timestamp: cached.timestamp };
 }
 
 function setCachedResults(query, results) {
   const key = normalizeQuery(query);
+  const isNew = !searchCache.has(key);
   searchCache.set(key, { results, timestamp: Date.now() });
+  // Refresh track list to update cache indicators
+  if (isNew && currentView === 'tracks') {
+    loadTracks();
+  }
+}
+
+function hasCachedResults(query) {
+  return getCachedResults(query) !== null;
+}
+
+function formatCacheTime(timestamp) {
+  const date = new Date(timestamp);
+  return date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
 }
 
 window.openSlskdSearch = async function(artist, title, trackId) {
@@ -761,8 +777,8 @@ async function executeSlskdSearch(query) {
   if (cached) {
     slskdLoading.style.display = 'none';
     slskdNoResults.style.display = 'none';
-    slskdSearchStatus.textContent = `${cached.length} résultats (cache)`;
-    renderSlskdResults(cached, false);
+    slskdSearchStatus.textContent = `${cached.results.length} résultats · ${formatCacheTime(cached.timestamp)}`;
+    renderSlskdResults(cached.results, false);
     return;
   }
   
