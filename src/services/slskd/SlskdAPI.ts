@@ -63,6 +63,14 @@ export class SlskdAPI {
     return { id: response.data.id };
   }
 
+  async cancelSearch(searchId: string): Promise<void> {
+    try {
+      await this.client.delete(`/api/v0/searches/${searchId}`);
+    } catch {
+      // Ignore errors - search might already be done
+    }
+  }
+
   async getSearchResults(
     searchId: string,
     includeFiles = true,

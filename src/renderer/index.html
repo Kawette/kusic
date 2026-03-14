@@ -551,11 +551,34 @@
           </button>
         </div>
 
-        <div class="slskd-search-info" id="slskd-search-info">
-          <span class="search-query" id="slskd-search-query"></span>
-          <span class="search-status" id="slskd-search-status"
-            >Recherche en cours...</span
+        <div class="slskd-search-bar">
+          <input
+            type="text"
+            class="slskd-search-input"
+            id="slskd-search-query"
+            placeholder="Recherche..."
+          />
+          <button
+            class="slskd-search-btn"
+            id="slskd-search-btn"
+            title="Relancer la recherche"
           >
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="11" cy="11" r="8" />
+              <line x1="21" y1="21" x2="16.65" y2="16.65" />
+            </svg>
+          </button>
+        </div>
+
+        <div class="slskd-search-status" id="slskd-search-status">
+          Recherche en cours...
         </div>
 
         <div class="slskd-results-container">

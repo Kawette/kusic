@@ -195,7 +195,10 @@ async function parseAudioFile(filePath: string): Promise<Track | null> {
     // Read KUSIC_TRACK_ID from comment field (format: [KUSIC:trackId] comment)
     let linkedTrackId: string | undefined;
     const commentRaw = metadata.common.comment?.[0];
-    const comment = typeof commentRaw === 'string' ? commentRaw : (commentRaw as { text?: string })?.text || '';
+    const comment =
+      typeof commentRaw === "string"
+        ? commentRaw
+        : (commentRaw as { text?: string })?.text || "";
     const kusicMatch = comment.match(/\[KUSIC:([^\]]+)\]/);
     if (kusicMatch) {
       linkedTrackId = kusicMatch[1];
@@ -236,7 +239,10 @@ interface MergedMetadata {
   linkedTrackId: string;
 }
 
-function mergeMetadata(playlistTrack: Track, fileMetadata: Partial<Track>): MergedMetadata {
+function mergeMetadata(
+  playlistTrack: Track,
+  fileMetadata: Partial<Track>,
+): MergedMetadata {
   return {
     title: playlistTrack.title || fileMetadata.title || "",
     artist: playlistTrack.artist || fileMetadata.artist || "",
@@ -246,26 +252,30 @@ function mergeMetadata(playlistTrack: Track, fileMetadata: Partial<Track>): Merg
   };
 }
 
-async function writeMetadataToFile(filePath: string, metadata: MergedMetadata): Promise<boolean> {
+async function writeMetadataToFile(
+  filePath: string,
+  metadata: MergedMetadata,
+): Promise<boolean> {
   try {
     const file = taglib.File.createFromPath(filePath);
-    
+
     // Write standard tags
     file.tag.title = metadata.title;
     file.tag.performers = [metadata.artist];
     file.tag.album = metadata.album;
-    
+
     // Store KUSIC_TRACK_ID in the comment field with a prefix
     // This is a cross-format compatible approach
-    const existingComment = file.tag.comment || '';
-    const kusicPrefix = '[KUSIC:';
+    const existingComment = file.tag.comment || "";
+    const kusicPrefix = "[KUSIC:";
     if (!existingComment.includes(kusicPrefix)) {
-      file.tag.comment = `${kusicPrefix}${metadata.linkedTrackId}] ${existingComment}`.trim();
+      file.tag.comment =
+        `${kusicPrefix}${metadata.linkedTrackId}] ${existingComment}`.trim();
     }
-    
+
     file.save();
     file.dispose();
-    
+
     console.log(`[Kusic] Wrote metadata to ${filePath}`);
     return true;
   } catch (err) {
@@ -393,26 +403,30 @@ ipcMain.handle("refresh-library", async () => {
   // Scan local files from library
   const localTracks = await scanLocalFiles();
   console.log(`[Kusic] Scanned ${localTracks.length} local files`);
-  
+
   // Create a map of linkedTrackId -> local file data for merging
   const linkedLocalFiles = new Map<string, Track>();
   const orphanedLocalTracks: Track[] = [];
-  
+
   for (const localTrack of localTracks) {
     if (localTrack.linkedTrackId) {
       linkedLocalFiles.set(localTrack.linkedTrackId, localTrack);
-      console.log(`[Kusic] Linked file: ${localTrack.filePath} -> ${localTrack.linkedTrackId}`);
+      console.log(
+        `[Kusic] Linked file: ${localTrack.filePath} -> ${localTrack.linkedTrackId}`,
+      );
     } else {
       orphanedLocalTracks.push(localTrack);
     }
   }
-  
-  console.log(`[Kusic] Found ${linkedLocalFiles.size} linked files, ${orphanedLocalTracks.length} orphaned`);
+
+  console.log(
+    `[Kusic] Found ${linkedLocalFiles.size} linked files, ${orphanedLocalTracks.length} orphaned`,
+  );
 
   // Rebuild unified track list with merged data
   const allTracks: Track[] = [];
   const matchedLinkedIds = new Set<string>();
-  
+
   for (const pl of refreshed) {
     for (const track of pl.tracks) {
       // Check if there's a linked local file for this track
@@ -477,52 +491,116 @@ ipcMain.handle("refresh-library", async () => {
 });
 
 // Tag a downloaded file with playlist track metadata
-ipcMain.handle("tag-downloaded-file", async (_, filename: string, trackId: string) => {
-  try {
-    const libraryPath = store.get("soulseek").libraryPath;
-    if (!libraryPath) {
-      return { success: false, error: "Library path not configured" };
-    }
-
-    // Find the file in library (slskd might put it in subdirectories)
-    const filePath = await findFileInLibrary(libraryPath, filename);
-    if (!filePath) {
-      return { success: false, error: "File not found in library" };
-    }
-
-    // Find the playlist track
-    const playlists = store.get("playlists");
-    let playlistTrack: Track | null = null;
-    for (const pl of playlists) {
-      const track = pl.tracks.find(t => t.id === trackId);
-      if (track) {
-        playlistTrack = track;
-        break;
+ipcMain.handle(
+  "tag-downloaded-file",
+  async (_, filename: string, trackId: string) => {
+    try {
+      const libraryPath = store.get("soulseek").libraryPath;
+      if (!libraryPath) {
+        return { success: false, error: "Library path not configured" };
       }
+
+      // Find the file in library (slskd might put it in subdirectories)
+      let filePath = await findFileInLibrary(libraryPath, filename);
+      if (!filePath) {
+        return { success: false, error: "File not found in library" };
+      }
+
+      // Find the playlist track
+      const playlists = store.get("playlists");
+      let playlistTrack: Track | null = null;
+      for (const pl of playlists) {
+        const track = pl.tracks.find((t) => t.id === trackId);
+        if (track) {
+          playlistTrack = track;
+          break;
+        }
+      }
+
+      if (!playlistTrack) {
+        return { success: false, error: "Playlist track not found" };
+      }
+
+      // Read current file metadata
+      const fileMetadata = await parseAudioFile(filePath);
+      if (!fileMetadata) {
+        return { success: false, error: "Could not read file metadata" };
+      }
+
+      // Merge and write
+      const merged = mergeMetadata(playlistTrack, fileMetadata);
+      const success = await writeMetadataToFile(filePath, merged);
+
+      // Generate clean filename: "Title - Artist.ext"
+      const ext = path.extname(filePath);
+      const cleanTitle = sanitizeFilename(playlistTrack.title);
+      const cleanArtist = sanitizeFilename(playlistTrack.artist);
+      const newFilename = `${cleanTitle} - ${cleanArtist}${ext}`;
+      const targetPath = path.join(libraryPath, newFilename);
+
+      // Handle name conflicts
+      let finalPath = targetPath;
+      if (fs.existsSync(targetPath) && targetPath !== filePath) {
+        let counter = 1;
+        while (fs.existsSync(finalPath)) {
+          finalPath = path.join(
+            libraryPath,
+            `${cleanTitle} - ${cleanArtist} (${counter})${ext}`,
+          );
+          counter++;
+        }
+      }
+
+      // Move/rename file
+      if (filePath !== finalPath) {
+        const fileDir = path.dirname(filePath);
+        fs.renameSync(filePath, finalPath);
+        filePath = finalPath;
+        console.log(`[Kusic] Renamed file to: ${path.basename(finalPath)}`);
+
+        // Clean up empty directories if moved from subdirectory
+        if (fileDir !== libraryPath) {
+          cleanEmptyDirs(fileDir, libraryPath);
+        }
+      }
+
+      return { success, filePath };
+    } catch (err) {
+      console.error("[Kusic] tag-downloaded-file error:", err);
+      return { success: false, error: (err as Error).message };
     }
+  },
+);
 
-    if (!playlistTrack) {
-      return { success: false, error: "Playlist track not found" };
+function sanitizeFilename(name: string): string {
+  // Remove/replace characters invalid in filenames
+  return name
+    .replace(/[<>:"/\\|?*]/g, "") // Remove invalid chars
+    .replace(/\s+/g, " ") // Collapse spaces
+    .trim();
+}
+
+function cleanEmptyDirs(dir: string, stopAt: string) {
+  // Don't delete the library root or go above it
+  if (dir === stopAt || !dir.startsWith(stopAt)) return;
+
+  try {
+    const entries = fs.readdirSync(dir);
+    if (entries.length === 0) {
+      fs.rmdirSync(dir);
+      console.log(`[Kusic] Removed empty directory: ${dir}`);
+      // Recursively check parent
+      cleanEmptyDirs(path.dirname(dir), stopAt);
     }
-
-    // Read current file metadata
-    const fileMetadata = await parseAudioFile(filePath);
-    if (!fileMetadata) {
-      return { success: false, error: "Could not read file metadata" };
-    }
-
-    // Merge and write
-    const merged = mergeMetadata(playlistTrack, fileMetadata);
-    const success = await writeMetadataToFile(filePath, merged);
-
-    return { success, filePath };
-  } catch (err) {
-    console.error("[Kusic] tag-downloaded-file error:", err);
-    return { success: false, error: (err as Error).message };
+  } catch {
+    // Directory not empty or can't be deleted
   }
-});
+}
 
-async function findFileInLibrary(libraryPath: string, filename: string): Promise<string | null> {
+async function findFileInLibrary(
+  libraryPath: string,
+  filename: string,
+): Promise<string | null> {
   const searchRecursive = (dir: string): string | null => {
     try {
       const entries = fs.readdirSync(dir, { withFileTypes: true });
@@ -685,6 +763,14 @@ ipcMain.handle("slskd-search", async (_, query: string) => {
   }
   const api = slskdManager.getAPI();
   return await api.search(query);
+});
+
+ipcMain.handle("slskd-cancel-search", async (_, searchId: string) => {
+  if (!slskdManager || !slskdManager.isRunning) {
+    return;
+  }
+  const api = slskdManager.getAPI();
+  await api.cancelSearch(searchId);
 });
 
 ipcMain.handle(

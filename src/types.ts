@@ -19,7 +19,7 @@ export interface Track {
   sampleRate?: number;
   bitDepth?: number;
   filePath?: string;
-  linkedTrackId?: string;  // KUSIC_TRACK_ID for linking to playlist track
+  linkedTrackId?: string; // KUSIC_TRACK_ID for linking to playlist track
 }
 
 export interface Playlist {

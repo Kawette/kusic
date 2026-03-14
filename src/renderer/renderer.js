@@ -694,13 +694,41 @@ window.openSlskdSearch = async function(artist, title, trackId) {
   currentSearchTrackId = trackId || null;
   
   const query = `${artist} ${title}`.trim();
-  slskdSearchQuery.textContent = query;
+  slskdSearchQuery.value = query;
+  slskdModal.style.display = 'flex';
+  
+  executeSlskdSearch(query);
+};
+
+const slskdSearchBtn = $('#slskd-search-btn');
+let isSearching = false;
+
+// Event listeners for manual search
+slskdSearchBtn.addEventListener('click', () => {
+  if (isSearching) return;
+  const query = slskdSearchQuery.value.trim();
+  if (query) executeSlskdSearch(query);
+});
+
+slskdSearchQuery.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    if (isSearching) return;
+    const query = slskdSearchQuery.value.trim();
+    if (query) executeSlskdSearch(query);
+  }
+});
+
+async function executeSlskdSearch(query) {
+  // Block if already searching
+  if (isSearching) return;
+  isSearching = true;
+  slskdSearchBtn.disabled = true;
+  
   slskdSearchStatus.textContent = 'Recherche...';
   slskdLoading.style.display = 'flex';
   slskdNoResults.style.display = 'none';
   slskdResultsList.innerHTML = '';
   slskdResultsList.appendChild(slskdLoading);
-  slskdModal.style.display = 'flex';
   
   try {
     const { id } = await api.slskd.search(query);
@@ -726,6 +754,8 @@ window.openSlskdSearch = async function(artist, title, trackId) {
         if (data.isComplete) {
           clearInterval(searchPollInterval);
           searchPollInterval = null;
+          isSearching = false;
+          slskdSearchBtn.disabled = false;
           // Charger les résultats finaux
           const final = await api.slskd.getSearchResults(currentSearchId, true);
           slskdSearchStatus.textContent = final.results.length > 0 ? `${final.results.length} résultats` : 'Aucun résultat';
@@ -734,13 +764,17 @@ window.openSlskdSearch = async function(artist, title, trackId) {
       } catch (err) {
         clearInterval(searchPollInterval);
         searchPollInterval = null;
+        isSearching = false;
+        slskdSearchBtn.disabled = false;
       }
     }, 500);
   } catch (err) {
+    isSearching = false;
+    slskdSearchBtn.disabled = false;
     showToast(`Erreur: ${err.message}`, 'error');
     closeSlskdModal();
   }
-};
+}
 
 function renderSlskdResults(results, searching = false) {
   slskdLoading.style.display = 'none';
@@ -811,9 +845,6 @@ function closeSlskdModal() {
 }
 
 $('#btn-close-slskd-modal').addEventListener('click', closeSlskdModal);
-slskdModal.addEventListener('click', (e) => {
-  if (e.target === slskdModal) closeSlskdModal();
-});
 
 function formatSize(bytes) {
   if (!bytes) return '—';
