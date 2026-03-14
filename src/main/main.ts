@@ -542,24 +542,17 @@ ipcMain.handle(
       const newFilename = `${cleanArtist} - ${cleanTitle}${ext}`;
       const targetPath = path.join(libraryPath, newFilename);
 
-      // Handle name conflicts
-      let finalPath = targetPath;
-      if (fs.existsSync(targetPath) && targetPath !== filePath) {
-        let counter = 1;
-        while (fs.existsSync(finalPath)) {
-          finalPath = path.join(
-            libraryPath,
-            `${cleanArtist} - ${cleanTitle} (${counter})${ext}`,
-          );
-          counter++;
-        }
-      }
-
-      // Move/rename file
-      if (filePath !== finalPath) {
+      // Move/rename file (replace existing if any)
+      if (filePath !== targetPath) {
         const fileDir = path.dirname(filePath);
-        fs.renameSync(filePath, finalPath);
-        filePath = finalPath;
+
+        // Delete existing file if present
+        if (fs.existsSync(targetPath)) {
+          fs.unlinkSync(targetPath);
+        }
+
+        fs.renameSync(filePath, targetPath);
+        filePath = targetPath;
 
         // Clean up empty directories if moved from subdirectory
         if (fileDir !== libraryPath) {
