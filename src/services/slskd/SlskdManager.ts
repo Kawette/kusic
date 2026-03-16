@@ -6,6 +6,7 @@ import path from "path";
 import fs from "fs";
 import https from "https";
 import http from "http";
+import extract from "extract-zip";
 import { app } from "electron";
 import { SlskdConfig } from "./SlskdConfig.js";
 import { SlskdAPI } from "./SlskdAPI.js";
@@ -89,7 +90,6 @@ export class SlskdManager {
 
     await this.downloadFile(url, zipPath, onProgress);
 
-    const extract = require("extract-zip");
     await extract(zipPath, { dir: binDir });
 
     fs.unlinkSync(zipPath);
