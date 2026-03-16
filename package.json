@@ -8,13 +8,29 @@
     "build": "node build.js",
     "watch": "tsc --watch",
     "start": "npm run build && electron .",
-    "dev": "npm run build && electron . --dev"
+    "dev": "npm run build && electron . --dev",
+    "dist": "npm run build && electron-builder --win"
+  },
+  "build": {
+    "appId": "dev.kusic.app",
+    "productName": "Kusic",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": "nsis"
+    }
   },
   "author": "",
   "license": "MIT",
   "devDependencies": {
     "@types/node": "^25.5.0",
     "electron": "^28.0.0",
+    "electron-builder": "^25.1.8",
     "typescript": "^5.9.3"
   },
   "dependencies": {
