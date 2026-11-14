@@ -504,10 +504,16 @@ a:hover {
   color: white;
 }
 
-/* A source was chosen and the download is under way */
-.track-download-btn.pending {
+/* A source was chosen: same green check as the chosen result in the search */
+.track-download-btn.pending,
+.track-download-btn.pending:hover {
   opacity: 1;
-  background: rgba(108, 92, 231, 0.2);
+  background: var(--success);
+  color: white;
+}
+
+.track-download-btn.pending:hover {
+  filter: brightness(1.1);
 }
 
 .source-badge {

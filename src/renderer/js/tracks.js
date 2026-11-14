@@ -126,7 +126,7 @@ function statusHtml(track) {
     }
     // A source is chosen: the download button says so, the details are in the downloads view
     const state = isTransferring(transfer) ? `en cours (${pct} %)` : waitingLabel(transfer).toLowerCase();
-    return `<button class="track-download-btn pending" data-action="download" title="Téléchargement ${escapeHtml(state)} · cliquer pour choisir une autre source">${icon(ICONS.download, 16)}</button>`;
+    return `<button class="track-download-btn pending" data-action="download" title="Téléchargement ${escapeHtml(state)} · cliquer pour choisir une autre source">${icon(ICONS.check, 16)}</button>`;
   }
   if (transfer) {
     return `<span class="status-tag failed" title="Le téléchargement a échoué">Échec</span>${otherSourceButton}`;
