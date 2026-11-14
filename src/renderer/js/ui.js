@@ -59,6 +59,12 @@ export function sourceBadge(source) {
   return `<span class="source-badge ${escapeHtml(source)}">${SOURCE_LABELS[source] || SOURCE_LABELS.unknown}</span>`;
 }
 
+/** Soulseek user name with a status dot (class of the dot, '' when unknown). */
+export function userLabel(username, dot, tooltip) {
+  return `<span class="user-label"${tooltip ? ` data-tooltip="${escapeHtml(tooltip)}"` : ''}>`
+    + `<span class="user-dot ${dot}"></span><span class="user-name">${escapeHtml(username)}</span></span>`;
+}
+
 /** Artwork image, or an empty placeholder of the same size. */
 export function thumb(url, cls) {
   return url

@@ -4,6 +4,7 @@
 
 import {
   $, api, baseName, bus, escapeHtml, formatSize, formatSpeed, icon, ICONS, showToast, toastError,
+  userLabel,
 } from './ui.js';
 
 const list = $('#download-view-list');
@@ -36,7 +37,8 @@ export function waitingLabel(t) {
   return 'En attente';
 }
 
-const PRESENCE_LABELS = { offline: 'hors ligne', away: 'absent' };
+// Known only while we wait in the user's queue (checked by the main process)
+const PRESENCE_LABELS = { online: 'En ligne', away: 'Absent', offline: 'Hors ligne' };
 
 function stateDisplay(t) {
   const s = (t.state || '').toLowerCase();
@@ -46,11 +48,7 @@ function stateDisplay(t) {
   if (s.includes('rejected')) return { label: 'Refusé', cls: 'state-error' };
   if (s.includes('completed')) return { label: 'Erreur', cls: 'state-error' };
   if (isTransferring(t)) return { label: 'En cours', cls: 'state-active' };
-  const presence = isRemotelyQueued(t) ? PRESENCE_LABELS[t.userPresence] : '';
-  return {
-    label: `${waitingLabel(t)}${presence ? ` · ${presence}` : ''}`,
-    cls: t.userPresence === 'offline' && presence ? 'state-error' : 'state-queued',
-  };
+  return { label: waitingLabel(t), cls: 'state-queued' };
 }
 
 /** True if this file is already being (or was) downloaded successfully. */
@@ -114,6 +112,7 @@ export function render() {
     const pct = Math.round(t.percentComplete);
     const running = !isFinished(t.state);
     const failedRow = isFailed(t.state);
+    const presence = isRemotelyQueued(t) && t.userPresence ? t.userPresence : '';
     const sizeText = running ? `${formatSize(t.bytesTransferred)} / ${formatSize(t.size)}` : formatSize(t.size);
     const progress = running
       ? `<span class="dl-speed">${t.averageSpeed > 0 ? formatSpeed(t.averageSpeed) : '—'}</span><div class="dl-progress-bar"><div class="dl-progress-fill" style="width: ${pct}%"></div></div><span class="dl-pct">${pct}%</span>`
@@ -128,7 +127,7 @@ export function render() {
 
     return `<div class="dl-row" data-index="${i}">
       <span class="dl-col-name" title="${escapeHtml(t.filename)}">${escapeHtml(baseName(t.filename))}</span>
-      <span class="dl-col-user">${escapeHtml(t.username)}</span>
+      <span class="dl-col-user">${userLabel(t.username, presence, PRESENCE_LABELS[presence])}</span>
       <span class="dl-col-size">${sizeText}</span>
       <span class="dl-col-progress">${progress}</span>
       <span class="dl-col-state ${cls}" title="${escapeHtml(label)}">${escapeHtml(label)}</span>

@@ -6,7 +6,7 @@
 import {
   $, api, baseName, bus, closeModal, durationBand, durationMatch, errorMessage, escapeHtml,
   formatBadge, formatDuration, formatSize, formatTime, icon, ICONS, isLossless, normalizeQuery,
-  openModal, showToast, sourceBadge, SPINNER, thumb, toastError,
+  openModal, showToast, sourceBadge, SPINNER, thumb, toastError, userLabel,
 } from './ui.js';
 import { pendingDownloadFor } from './downloads.js';
 import { fallbackQuery, isRelevant, relevanceOf, searchStats, trackQuery } from './query.js';
@@ -298,7 +298,7 @@ function renderResults(searching) {
     const off = offTopicSet.has(r);
     return `<div class="slskd-result-row${off ? ' off-topic' : ''}" ${off ? 'title="Le nom du fichier ne contient pas le titre"' : ''}>
       <span class="result-filename" title="${escapeHtml(r.filename)}">${escapeHtml(name)}</span>
-      <span class="result-user" data-tooltip="${escapeHtml(userInfo)}"><span class="slot-dot ${slot}"></span><span class="result-username">${escapeHtml(r.username)}</span></span>
+      ${userLabel(r.username, slot, userInfo)}
       <span class="result-format">${formatBadge(r.extension)}</span>
       <span class="result-quality">${escapeHtml(quality)}</span>
       <span class="result-duration ${duration.cls}" title="${duration.title}">${r.length ? formatDuration(r.length * 1000) : '—'}</span>

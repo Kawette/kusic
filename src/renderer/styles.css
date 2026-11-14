@@ -1131,7 +1131,8 @@ a:hover {
   color: var(--text-primary);
 }
 
-.result-user {
+/* Soulseek user: status dot + name (search results, downloads) */
+.user-label {
   position: relative;
   display: flex;
   align-items: center;
@@ -1141,7 +1142,7 @@ a:hover {
   font-size: 12px;
 }
 
-.result-username {
+.user-name {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1375,11 +1376,7 @@ a:hover {
 }
 
 .dl-col-user {
-  color: var(--text-secondary);
-  font-size: 12px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  min-width: 0;
 }
 
 .dl-col-size {
@@ -1725,7 +1722,7 @@ a:hover {
 }
 
 .quality-badge:hover::after,
-.result-user:hover::after {
+.user-label[data-tooltip]:hover::after {
   content: attr(data-tooltip);
   position: absolute;
   right: calc(100% + 8px);
@@ -1828,21 +1825,27 @@ button.identify-icon {
   color: var(--warning) !important;
 }
 
-/* Upload slot of the user: free (starts now) or busy (waits in their queue) */
-/* Even size so it centers on whole pixels; always present so names line up */
-.slot-dot {
+/* Search: upload slot free / busy. Downloads: user online / away / offline.
+   Even size so it centers on whole pixels; always present so names line up */
+.user-dot {
   width: 6px;
   height: 6px;
   border-radius: 50%;
   flex-shrink: 0;
 }
 
-.slot-dot.free {
+.user-dot.free,
+.user-dot.online {
   background: var(--success);
 }
 
-.slot-dot.busy {
+.user-dot.busy,
+.user-dot.away {
   background: var(--warning);
+}
+
+.user-dot.offline {
+  background: var(--danger);
 }
 
 .result-download-btn.done {
