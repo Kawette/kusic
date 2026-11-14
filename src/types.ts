@@ -1,8 +1,10 @@
 // ─── Kusic Shared Types ─────────────────────────────────────
 
+export type PlaylistSource = "spotify" | "soundcloud";
+
 export interface Track {
   id: string;
-  source: "spotify" | "soundcloud" | "local" | "unknown";
+  source: PlaylistSource | "local" | "unknown";
   title: string;
   artist: string;
   album: string;
@@ -11,20 +13,25 @@ export interface Track {
   addedAt: number;
   spotifyUrl?: string;
   soundcloudUrl?: string;
-  previewUrl?: string | null;
   streamUrl?: string | null;
+  /** Playlists containing this track (playlist tracks only) */
+  playlistIds?: string[];
   // Local file metadata
   format?: string;
   bitRate?: number;
   sampleRate?: number;
   bitDepth?: number;
+  fileSize?: number;
   filePath?: string;
-  linkedTrackId?: string; // KUSIC_TRACK_ID for linking to playlist track
+  /** Playlist track ids stored in the file's [KUSIC:...] tag */
+  linkedTrackIds?: string[];
+  /** Pending file conflict for this track, resolved by the user */
+  conflictId?: string;
 }
 
 export interface Playlist {
   id: string;
-  source: "spotify" | "soundcloud";
+  source: PlaylistSource;
   name: string;
   description: string;
   url: string;
@@ -52,9 +59,46 @@ export interface AppSettings {
 
 export interface TrackFilters {
   search?: string;
-  source?: "all" | "spotify" | "soundcloud" | "local" | "unknown";
-  sortBy?: "recent" | "title" | "artist" | "duration";
+  source?: "all" | "missing" | PlaylistSource | "local" | "unknown";
+  playlistId?: string;
+  sortBy?: "recent" | "title" | "artist" | "duration" | "playlist";
 }
+
+/**
+ * A downloaded (or identified) file that could not be placed because the
+ * track already has a file, or its "Artist - Title" name is taken.
+ */
+export interface FileConflict {
+  id: string;
+  trackId: string;
+  /** Incoming file, left where it is until the user decides */
+  newPath: string;
+  /** File currently holding the slot */
+  existingPath: string;
+  reason: "already-linked" | "same-name";
+  createdAt: number;
+}
+
+export interface ConflictFileInfo {
+  path: string;
+  exists: boolean;
+  format?: string;
+  bitRate?: number;
+  sampleRate?: number;
+  bitDepth?: number;
+  duration?: number;
+  size?: number;
+  /** Titles of the playlist tracks this file is linked to */
+  linkedTo: string[];
+}
+
+export interface ConflictDetails extends FileConflict {
+  track: Pick<Track, "id" | "title" | "artist" | "duration" | "artwork">;
+  newFile: ConflictFileInfo;
+  existingFile: ConflictFileInfo;
+}
+
+export type ConflictChoice = "keep-existing" | "replace";
 
 // ─── Slskd Types ────────────────────────────────────────────
 
@@ -62,14 +106,17 @@ export interface SlskdStatus {
   running: boolean;
   connected: boolean;
   connecting?: boolean;
+  starting?: boolean;
   username?: string;
   state?: string;
+  lastError?: string;
 }
 
 export interface SlskdSearchResult {
   username: string;
   freeUploadSlots: number;
   uploadSpeed: number;
+  queueLength?: number;
   filename: string;
   size: number;
   bitRate?: number;
@@ -78,4 +125,17 @@ export interface SlskdSearchResult {
   length?: number;
   extension: string;
   quality: number;
+}
+
+/** A download as shown in the UI, annotated with the playlist track it is for */
+export interface Transfer {
+  username: string;
+  id: string;
+  filename: string;
+  state: string;
+  size: number;
+  bytesTransferred: number;
+  percentComplete: number;
+  averageSpeed: number;
+  trackId?: string;
 }

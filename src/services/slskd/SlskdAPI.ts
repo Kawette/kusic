@@ -17,6 +17,7 @@ interface SearchResponse {
     username: string;
     freeUploadSlots: number;
     uploadSpeed: number;
+    queueLength?: number;
     files?: Array<{
       filename: string;
       size: number;
@@ -31,11 +32,11 @@ interface SearchResponse {
 export class SlskdAPI {
   private client: AxiosInstance;
 
-  constructor(baseUrl = "http://localhost:5030") {
+  constructor(baseUrl: string, apiKey: string) {
     this.client = axios.create({
       baseURL: baseUrl,
       timeout: 30000,
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "X-API-Key": apiKey },
     });
   }
 
@@ -62,7 +63,7 @@ export class SlskdAPI {
 
   async cancelSearch(searchId: string): Promise<void> {
     try {
-      await this.client.delete(`/api/v0/searches/${searchId}`);
+      await this.client.delete(`/api/v0/searches/${encodeURIComponent(searchId)}`);
     } catch {
       // Ignore errors - search might already be done
     }
@@ -76,10 +77,10 @@ export class SlskdAPI {
     isComplete: boolean;
     fileCount: number;
   }> {
-    const url = includeFiles
-      ? `/api/v0/searches/${searchId}?includeResponses=true`
-      : `/api/v0/searches/${searchId}`;
-    const response = await this.client.get(url);
+    const response = await this.client.get(
+      `/api/v0/searches/${encodeURIComponent(searchId)}`,
+      { params: includeFiles ? { includeResponses: true } : {} },
+    );
     return {
       results: includeFiles ? this.flattenSearchResults(response.data) : [],
       isComplete: response.data.isComplete,
@@ -93,13 +94,14 @@ export class SlskdAPI {
     if (!searchData.responses) return results;
 
     for (const response of searchData.responses) {
-      const { username, freeUploadSlots, uploadSpeed } = response;
+      const { username, freeUploadSlots, uploadSpeed, queueLength } = response;
 
       for (const file of response.files || []) {
         results.push({
           username,
           freeUploadSlots,
           uploadSpeed,
+          queueLength,
           filename: file.filename,
           size: file.size,
           bitRate: file.bitRate,

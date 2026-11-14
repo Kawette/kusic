@@ -1,285 +1,366 @@
 // ─── slskd Process Manager ──────────────────────────────────
 // Windows only - version locked to avoid breaking changes
 
-import { spawn, ChildProcess } from "child_process";
-import path from "path";
+import { spawn, execFile, type ChildProcess } from "child_process";
 import fs from "fs";
-import https from "https";
-import http from "http";
-import extract from "extract-zip";
-import { app } from "electron";
+import net from "net";
+import path from "path";
+import { Readable, Transform } from "stream";
+import { pipeline } from "stream/promises";
+import { app, net as electronNet } from "electron";
 import { SlskdConfig } from "./SlskdConfig.js";
 import { SlskdAPI } from "./SlskdAPI.js";
 import type { SlskdStatus, SoulseekConfig } from "../../types.js";
 
 const SLSKD_VERSION = "0.24.5";
-const SUPPORTED_PLATFORM = "win32";
+const WEB_PORT = 5030;
+const LISTEN_PORT = 50300;
+const BASE_URL = `http://127.0.0.1:${WEB_PORT}`;
+const READY_TIMEOUT = 30_000;
+
+type State = "stopped" | "starting" | "running" | "stopping";
+
+const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+function isPortInUse(port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const socket = net.connect({ port, host: "127.0.0.1" });
+    socket.once("connect", () => {
+      socket.destroy();
+      resolve(true);
+    });
+    socket.once("error", () => resolve(false));
+  });
+}
+
+function processImageName(pid: number): Promise<string> {
+  return new Promise((resolve) => {
+    execFile("tasklist", ["/FI", `PID eq ${pid}`, "/FO", "CSV", "/NH"], (err, stdout) =>
+      resolve(err ? "" : stdout.split(",")[0]?.replace(/"/g, "").trim().toLowerCase() || ""),
+    );
+  });
+}
+
+/** Extract a zip with Windows' built-in bsdtar (rejects absolute and ".." paths). */
+function extractZip(zipPath: string, dir: string): Promise<void> {
+  fs.mkdirSync(dir, { recursive: true });
+  const tar = path.join(process.env.SystemRoot || "C:\\Windows", "System32", "tar.exe");
+  return new Promise((resolve, reject) => {
+    execFile(tar, ["-xf", zipPath, "-C", dir], { windowsHide: true }, (err, _out, stderr) =>
+      err ? reject(new Error(`Extraction impossible : ${stderr || err.message}`)) : resolve(),
+    );
+  });
+}
+
+function killTree(pid: number): Promise<void> {
+  return new Promise((resolve) => {
+    execFile("taskkill", ["/pid", String(pid), "/f", "/t"], { windowsHide: true }, (err) => {
+      if (err) console.warn(`[slskd] taskkill ${pid}:`, err.message);
+      resolve();
+    });
+  });
+}
 
 export class SlskdManager {
-  private process: ChildProcess | null = null;
+  private state: State = "stopped";
+  private child: ChildProcess | null = null;
   private api: SlskdAPI | null = null;
-  isRunning = false;
+  private startPromise: Promise<SlskdAPI> | null = null;
+  private stopPromise: Promise<void> | null = null;
+  /** Last error reported by slskd, shown in the settings */
+  lastError = "";
+  /** Called when the process exits or becomes ready */
+  onStateChange: () => void = () => {};
 
-  private resourcesPath: string;
-  private binaryPath: string | null;
-  private configPath: string;
-  private dataPath: string;
-  private configManager: SlskdConfig;
+  private resourcesPath = path.join(app.getPath("userData"), "slskd");
+  private binDir = path.join(
+    this.resourcesPath,
+    "bin",
+    process.arch === "arm64" ? "win-arm64" : "win-x64",
+  );
+  private binaryPath = path.join(this.binDir, "slskd.exe");
+  private configPath = path.join(this.resourcesPath, "slskd.yml");
+  private dataPath = path.join(this.resourcesPath, "data");
+  private incompletePath = path.join(this.resourcesPath, "incomplete");
+  private pidPath = path.join(this.resourcesPath, "slskd.pid");
+  private versionPath = path.join(this.resourcesPath, "version.json");
 
-  constructor() {
-    this.resourcesPath = path.join(app.getPath("userData"), "slskd");
-    this.binaryPath = this.getBinaryPath();
-    this.configPath = path.join(this.resourcesPath, "slskd.yml");
-    this.dataPath = path.join(this.resourcesPath, "data");
-    this.configManager = new SlskdConfig(this.configPath);
+  get isRunning(): boolean {
+    return this.state === "running";
   }
 
   isPlatformSupported(): boolean {
-    return process.platform === SUPPORTED_PLATFORM;
+    return process.platform === "win32";
   }
 
-  /** Release flavor matching this machine, e.g. "win-x64". */
-  private get platformTarget(): string {
-    return process.arch === "arm64" ? "win-arm64" : "win-x64";
-  }
+  // ─── Binary ───────────────────────────────────────────────
 
-  private getBinaryPath(): string | null {
-    if (!this.isPlatformSupported()) {
-      console.warn(
-        "[slskd] Cette plateforme n'est pas supportée. Seul Windows est supporté.",
-      );
-      return null;
+  getVersionInfo() {
+    const installed = this.isPlatformSupported() && fs.existsSync(this.binaryPath);
+    let installedVersion: string | null = null;
+    try {
+      installedVersion = JSON.parse(fs.readFileSync(this.versionPath, "utf8")).version;
+    } catch {
+      // Unknown version
     }
-    return path.join(this.resourcesPath, "bin", this.platformTarget, "slskd.exe");
-  }
-
-  getVersion(): string {
-    return SLSKD_VERSION;
+    return {
+      version: SLSKD_VERSION,
+      installed,
+      installedVersion,
+      updateAvailable: installed && installedVersion !== SLSKD_VERSION,
+    };
   }
 
   isBinaryInstalled(): boolean {
-    if (!this.binaryPath) return false;
-    return fs.existsSync(this.binaryPath);
+    return this.getVersionInfo().installed;
   }
 
-  async downloadBinary(
-    onProgress: (percent: number) => void = () => {},
-  ): Promise<string> {
+  async downloadBinary(onProgress: (percent: number) => void = () => {}): Promise<void> {
     if (!this.isPlatformSupported()) {
       throw new Error("Seul Windows est supporté actuellement.");
     }
-
-    if (!this.binaryPath) {
-      throw new Error("Impossible de déterminer le chemin du binaire");
+    if (this.state !== "stopped") {
+      throw new Error("Arrêtez slskd avant de le mettre à jour");
     }
 
-    const url = `https://github.com/slskd/slskd/releases/download/${SLSKD_VERSION}/slskd-${SLSKD_VERSION}-${this.platformTarget}.zip`;
+    const target = process.arch === "arm64" ? "win-arm64" : "win-x64";
+    const url = `https://github.com/slskd/slskd/releases/download/${SLSKD_VERSION}/slskd-${SLSKD_VERSION}-${target}.zip`;
     const zipPath = path.join(this.resourcesPath, "slskd.zip");
-    const binDir = path.dirname(this.binaryPath);
+    const extractDir = `${this.binDir}.new`;
+    fs.mkdirSync(this.resourcesPath, { recursive: true });
 
-    fs.mkdirSync(binDir, { recursive: true });
+    try {
+      const response = await electronNet.fetch(url, { signal: AbortSignal.timeout(300_000) });
+      if (!response.ok || !response.body) {
+        throw new Error(`Téléchargement impossible (HTTP ${response.status})`);
+      }
 
-    await this.downloadFile(url, zipPath, onProgress);
-
-    await extract(zipPath, { dir: binDir });
-
-    fs.unlinkSync(zipPath);
-
-    const versionFile = path.join(this.resourcesPath, "version.json");
-    fs.writeFileSync(
-      versionFile,
-      JSON.stringify({
-        version: SLSKD_VERSION,
-        installedAt: new Date().toISOString(),
-        platform: "win32",
-        arch: process.arch,
-      }),
-      "utf8",
-    );
-
-    return this.binaryPath;
-  }
-
-  private downloadFile(
-    url: string,
-    destPath: string,
-    onProgress: (percent: number) => void,
-  ): Promise<string> {
-    return new Promise((resolve, reject) => {
-      const file = fs.createWriteStream(destPath);
-      const protocol = url.startsWith("https") ? https : http;
-
-      const request = protocol.get(url, (response) => {
-        if (response.statusCode === 302 || response.statusCode === 301) {
-          file.close();
-          fs.unlinkSync(destPath);
-          this.downloadFile(response.headers.location!, destPath, onProgress)
-            .then(resolve)
-            .catch(reject);
-          return;
-        }
-
-        const totalSize = parseInt(
-          response.headers["content-length"] || "0",
-          10,
-        );
-        let downloadedSize = 0;
-
-        response.on("data", (chunk: Buffer) => {
-          downloadedSize += chunk.length;
-          if (totalSize) {
-            onProgress(Math.round((downloadedSize / totalSize) * 100));
-          }
-        });
-
-        response.pipe(file);
-
-        file.on("finish", () => {
-          file.close();
-          resolve(destPath);
-        });
+      const total = Number(response.headers.get("content-length")) || 0;
+      let received = 0;
+      const progress = new Transform({
+        transform(chunk: Buffer, _encoding, callback) {
+          received += chunk.length;
+          if (total) onProgress(Math.round((received / total) * 100));
+          callback(null, chunk);
+        },
       });
+      await pipeline(
+        Readable.fromWeb(response.body as import("stream/web").ReadableStream),
+        progress,
+        fs.createWriteStream(zipPath),
+      );
 
-      request.on("error", (err) => {
-        fs.unlink(destPath, () => {});
-        reject(err);
-      });
-    });
-  }
+      // Extract next to the current install, then swap
+      fs.rmSync(extractDir, { recursive: true, force: true });
+      await extractZip(zipPath, extractDir);
+      if (!fs.existsSync(path.join(extractDir, "slskd.exe"))) {
+        throw new Error("Archive slskd invalide (slskd.exe absent)");
+      }
+      fs.rmSync(this.binDir, { recursive: true, force: true });
+      fs.renameSync(extractDir, this.binDir);
 
-  async start(options: SoulseekConfig): Promise<SlskdAPI> {
-    if (this.isRunning) {
-      console.log("[slskd] Already running");
-      return this.api!;
+      fs.writeFileSync(
+        this.versionPath,
+        JSON.stringify({
+          version: SLSKD_VERSION,
+          installedAt: new Date().toISOString(),
+          arch: process.arch,
+        }),
+        "utf8",
+      );
+    } finally {
+      fs.rmSync(zipPath, { force: true });
+      fs.rmSync(extractDir, { recursive: true, force: true });
     }
+  }
 
+  // ─── Process lifecycle ────────────────────────────────────
+
+  /** Start slskd; concurrent calls share the same start. */
+  start(options: SoulseekConfig, apiKey: string): Promise<SlskdAPI> {
+    if (this.state === "running" && this.api) return Promise.resolve(this.api);
+    this.startPromise ??= this.doStart(options, apiKey).finally(() => {
+      this.startPromise = null;
+    });
+    return this.startPromise;
+  }
+
+  private async doStart(options: SoulseekConfig, apiKey: string): Promise<SlskdAPI> {
     if (!options.username || !options.password) {
-      throw new Error("Soulseek username and password are required");
+      throw new Error("Configurez vos identifiants Soulseek dans les paramètres");
     }
     if (!options.libraryPath) {
-      throw new Error("Library path is required");
+      throw new Error("Configurez le dossier de votre bibliothèque dans les paramètres");
     }
-
-    if (!this.isBinaryInstalled() || !this.binaryPath) {
-      throw new Error("slskd binary not found. Please download it first.");
+    if (!this.isBinaryInstalled()) {
+      throw new Error("slskd n'est pas installé. Téléchargez-le dans les paramètres.");
     }
+    if (this.stopPromise) await this.stopPromise;
 
-    this.configManager.generate({
-      username: options.username,
-      password: options.password,
-      libraryPath: options.libraryPath,
-      webPort: 5030,
-      listenPort: 50300,
-    });
+    this.state = "starting";
+    this.lastError = "";
+    this.onStateChange();
 
-    fs.mkdirSync(this.dataPath, { recursive: true });
-
-    return new Promise((resolve, reject) => {
-      const args = [
-        "--config",
-        this.configPath,
-        "--app-dir",
-        this.dataPath,
-        "--no-logo",
-      ];
-
-      console.log(`[slskd] Starting: ${this.binaryPath} ${args.join(" ")}`);
-
-      this.process = spawn(this.binaryPath!, args, {
-        cwd: this.resourcesPath,
-        stdio: ["ignore", "pipe", "pipe"],
-      });
-
-      this.process.stdout?.on("data", (data: Buffer) => {
-        console.log("[slskd]", data.toString().trim());
-      });
-
-      this.process.stderr?.on("data", (data: Buffer) => {
-        console.error("[slskd:err]", data.toString().trim());
-      });
-
-      this.process.on("error", (err) => {
-        console.error("[slskd] Process error:", err);
-        this.isRunning = false;
-        reject(err);
-      });
-
-      this.process.on("close", (code) => {
-        console.log(`[slskd] Process exited with code ${code}`);
-        this.isRunning = false;
-        this.process = null;
-      });
-
-      this.waitForReady()
-        .then(() => {
-          this.isRunning = true;
-          this.api = new SlskdAPI("http://localhost:5030");
-          resolve(this.api);
-        })
-        .catch((err) => {
-          this.stop();
-          reject(new Error(`slskd failed to start: ${err.message}`));
-        });
-    });
-  }
-
-  private async waitForReady(
-    maxAttempts = 30,
-    interval = 1000,
-  ): Promise<boolean> {
-    const tempApi = new SlskdAPI("http://localhost:5030");
-
-    for (let i = 0; i < maxAttempts; i++) {
-      if (await tempApi.healthCheck()) {
-        console.log("[slskd] API is ready");
-        return true;
-      }
-      await new Promise((r) => setTimeout(r, interval));
-    }
-
-    throw new Error("Timeout waiting for slskd to start");
-  }
-
-  stop(): void {
-    if (this.process) {
-      console.log("[slskd] Stopping process...");
-
-      if (process.platform === "win32") {
-        spawn("taskkill", ["/pid", String(this.process.pid), "/f", "/t"]);
-      } else {
-        this.process.kill("SIGTERM");
+    try {
+      await this.killOrphan();
+      if (await isPortInUse(WEB_PORT)) {
+        throw new Error(`Le port ${WEB_PORT} est déjà utilisé par une autre application`);
       }
 
-      this.process = null;
-      this.isRunning = false;
+      new SlskdConfig(this.configPath).generate({
+        username: options.username,
+        libraryPath: options.libraryPath,
+        incompletePath: this.incompletePath,
+        webPort: WEB_PORT,
+        listenPort: LISTEN_PORT,
+      });
+      fs.mkdirSync(this.dataPath, { recursive: true });
+
+      const child = this.spawnProcess(options.password, apiKey);
+      const exited = new Promise<never>((_, reject) => {
+        child.once("error", (err) => reject(err));
+        child.once("exit", (code) =>
+          reject(
+            new Error(
+              `slskd s'est arrêté au démarrage (code ${code})${this.lastError ? ` : ${this.lastError}` : ""}`,
+            ),
+          ),
+        );
+      });
+      exited.catch(() => {}); // Handled by the race below
+
+      const api = new SlskdAPI(BASE_URL, apiKey);
+      await Promise.race([this.waitForReady(api), exited]);
+
+      this.api = api;
+      this.state = "running";
+      this.onStateChange();
+      return api;
+    } catch (err) {
+      this.lastError ||= (err as Error).message;
+      await this.stop();
+      this.onStateChange();
+      throw err;
+    }
+  }
+
+  private spawnProcess(password: string, apiKey: string): ChildProcess {
+    const args = ["--config", this.configPath, "--app-dir", this.dataPath, "--no-logo"];
+    console.log(`[slskd] Starting: ${this.binaryPath} ${args.join(" ")}`);
+
+    const child = spawn(this.binaryPath, args, {
+      cwd: this.resourcesPath,
+      stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true,
+      env: {
+        ...process.env,
+        SLSKD_SLSK_PASSWORD: password,
+        SLSKD_API_KEY: `role=Administrator;cidr=127.0.0.1/32,::1/128;${apiKey}`,
+      },
+    });
+    this.child = child;
+    if (child.pid) fs.writeFileSync(this.pidPath, String(child.pid), "utf8");
+
+    const onOutput = (data: Buffer) => {
+      for (const line of data.toString().split(/\r?\n/).filter(Boolean)) {
+        console.log("[slskd]", line);
+        if (/\b(ERR|FTL|error|fail(ed)?|exception|invalid)\b/i.test(line)) {
+          this.lastError = line.replace(/^\[[^\]]*\]\s*/, "").slice(0, 300);
+        }
+      }
+    };
+    child.stdout?.on("data", onOutput);
+    child.stderr?.on("data", onOutput);
+
+    child.on("exit", (code) => {
+      console.log(`[slskd] Process exited with code ${code}`);
+      // Ignore late exits of a previous process
+      if (this.child !== child) return;
+      this.child = null;
       this.api = null;
+      this.state = "stopped";
+      fs.rmSync(this.pidPath, { force: true });
+      this.onStateChange();
+    });
+
+    return child;
+  }
+
+  private async waitForReady(api: SlskdAPI): Promise<void> {
+    for (const end = Date.now() + READY_TIMEOUT; Date.now() < end; ) {
+      if (!this.child) throw new Error("slskd s'est arrêté au démarrage");
+      if (await api.healthCheck()) return;
+      await delay(500);
     }
+    throw new Error("slskd ne répond pas (délai dépassé)");
+  }
+
+  /** Kill a slskd left running by a previous Kusic session. */
+  private async killOrphan(): Promise<void> {
+    if (!fs.existsSync(this.pidPath)) return;
+    const pid = Number(fs.readFileSync(this.pidPath, "utf8"));
+    fs.rmSync(this.pidPath, { force: true });
+    if (!pid || (await processImageName(pid)) !== "slskd.exe") return;
+
+    console.log(`[slskd] Killing orphan process ${pid}`);
+    await killTree(pid);
+    for (let i = 0; i < 20 && (await isPortInUse(WEB_PORT)); i++) await delay(250);
+  }
+
+  /** Stop slskd and wait for the process to exit. */
+  stop(): Promise<void> {
+    const child = this.child;
+    if (!child) {
+      this.state = "stopped";
+      return Promise.resolve();
+    }
+
+    this.stopPromise ??= (async () => {
+      console.log("[slskd] Stopping process...");
+      this.state = "stopping";
+      this.api = null;
+      const exited = new Promise<void>((resolve) => {
+        if (child.exitCode !== null) resolve();
+        else child.once("exit", () => resolve());
+      });
+      if (child.pid) await killTree(child.pid);
+      await Promise.race([exited, delay(5000)]);
+      if (this.child === child) {
+        this.child = null;
+        this.state = "stopped";
+        fs.rmSync(this.pidPath, { force: true });
+        this.onStateChange();
+      }
+    })().finally(() => {
+      this.stopPromise = null;
+    });
+    return this.stopPromise;
   }
 
   getAPI(): SlskdAPI {
-    if (!this.api) {
-      throw new Error("slskd is not running");
-    }
+    if (!this.api) throw new Error("slskd n'est pas démarré");
     return this.api;
   }
 
   async getStatus(): Promise<SlskdStatus> {
+    if (this.state === "starting") {
+      return { running: false, connected: false, starting: true };
+    }
     if (!this.isRunning || !this.api) {
-      return { running: false, connected: false };
+      return { running: false, connected: false, lastError: this.lastError || undefined };
     }
 
     try {
-      const state = await this.api.getServerState();
-      const stateStr = state.state || "";
-      const isConnected = stateStr.includes("Connected");
-      const isLoggedIn = stateStr.includes("LoggedIn");
-
+      const { state = "", username } = await this.api.getServerState();
+      const isConnected = state.includes("Connected");
+      const isLoggedIn = state.includes("LoggedIn");
       return {
         running: true,
         connected: isConnected && isLoggedIn,
         connecting: isConnected && !isLoggedIn,
-        username: state.username,
-        state: stateStr,
+        username,
+        state,
+        lastError: this.lastError || undefined,
       };
     } catch {
       return { running: true, connected: false, state: "Démarrage..." };

@@ -1,0 +1,166 @@
+// ─── Shared UI helpers ──────────────────────────────────────
+
+export const api = window.kusic;
+
+export const $ = (sel) => document.querySelector(sel);
+export const $$ = (sel) => document.querySelectorAll(sel);
+
+const HTML_ESCAPES = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+
+/** Escape a value for use in HTML text and quoted attributes. */
+export function escapeHtml(str) {
+  if (str == null) return '';
+  return String(str).replace(/[&<>"']/g, (c) => HTML_ESCAPES[c]);
+}
+
+export const ICONS = {
+  download: '<path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>',
+  search: '<circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>',
+  check: '<polyline points="20 6 9 17 4 12"/>',
+  close: '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>',
+  retry: '<polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/>',
+  trash: '<polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/>',
+  folder: '<path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/>',
+  export: '<path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/>',
+  upgrade: '<line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/>',
+  warning: '<path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>',
+};
+
+export function icon(paths, size = 14) {
+  return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">${paths}</svg>`;
+}
+
+export const SPINNER = '<svg class="spinner" width="14" height="14" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="3" stroke-dasharray="30 70"/></svg>';
+
+export const SOURCE_LABELS = {
+  spotify: '● Spotify',
+  soundcloud: '● SoundCloud',
+  local: '● Local',
+  unknown: '● Inconnu',
+};
+
+export const LOSSLESS = ['FLAC', 'WAV', 'ALAC', 'APE', 'AIFF'];
+
+/** Soulseek query for a track: "Artist Title". */
+export function trackQuery(track) {
+  return `${track.artist} ${track.title}`.trim();
+}
+
+export function normalizeQuery(query) {
+  return query.toLowerCase().trim().replace(/\s+/g, ' ');
+}
+
+export function formatDuration(ms) {
+  if (!ms) return '—';
+  const totalSeconds = Math.round(ms / 1000);
+  return `${Math.floor(totalSeconds / 60)}:${String(totalSeconds % 60).padStart(2, '0')}`;
+}
+
+export function formatSize(bytes) {
+  if (!bytes) return '—';
+  if (bytes < 1024) return `${bytes} o`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} Ko`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} Mo`;
+}
+
+export function formatSpeed(bytesPerSec) {
+  if (bytesPerSec < 1024) return `${Math.round(bytesPerSec)} o/s`;
+  if (bytesPerSec < 1024 * 1024) return `${(bytesPerSec / 1024).toFixed(0)} Ko/s`;
+  return `${(bytesPerSec / (1024 * 1024)).toFixed(1)} Mo/s`;
+}
+
+export function formatTime(timestamp) {
+  return new Date(timestamp).toLocaleString('fr-FR', {
+    day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
+  });
+}
+
+/** "FLAC 44.1 kHz" / "MP3 320 kbps" */
+export function qualityLabel({ format, bitRate, sampleRate }) {
+  const fmt = (format || '').toUpperCase();
+  if (LOSSLESS.includes(fmt) && sampleRate) return `${(sampleRate / 1000).toFixed(1)} kHz`;
+  if (bitRate) return `${bitRate} kbps`;
+  return '';
+}
+
+export function formatBadge(format) {
+  const fmt = (format || '?').toUpperCase();
+  const cls = ['FLAC', 'MP3', 'WAV'].includes(fmt) ? fmt.toLowerCase() : 'other';
+  return `<span class="format-badge ${cls}">${escapeHtml(fmt)}</span>`;
+}
+
+// ─── Toasts ─────────────────────────────────────────────────
+export function showToast(message, type = 'info') {
+  const toast = document.createElement('div');
+  toast.className = `toast ${type}`;
+  toast.textContent = message;
+  $('#toast-container').appendChild(toast);
+  setTimeout(() => {
+    toast.classList.add('toast-out');
+    setTimeout(() => toast.remove(), 200);
+  }, type === 'error' ? 6000 : 4000);
+}
+
+export function errorMessage(err) {
+  // IPC errors arrive as "Error invoking remote method 'x': Error: message"
+  return String(err?.message || err).replace(/^Error invoking remote method '[^']+': (\w*Error: )?/, '');
+}
+
+// ─── Modals ─────────────────────────────────────────────────
+const modalCloseHandlers = new Map();
+
+/** Show a modal overlay; `onClose` runs when it is closed by any means. */
+export function openModal(el, onClose) {
+  el.hidden = false;
+  if (onClose) modalCloseHandlers.set(el, onClose);
+  el.querySelector('input:not([type=checkbox]), button')?.focus();
+}
+
+export function closeModal(el) {
+  if (el.hidden) return;
+  el.hidden = true;
+  const onClose = modalCloseHandlers.get(el);
+  modalCloseHandlers.delete(el);
+  onClose?.();
+}
+
+export function closeAllModals() {
+  $$('.modal-overlay').forEach(closeModal);
+}
+
+// Backdrop clicks and [data-close-modal] buttons close their modal
+document.addEventListener('click', (e) => {
+  const overlay = e.target.closest('.modal-overlay');
+  if (!overlay) return;
+  if (e.target === overlay || e.target.closest('[data-close-modal]')) closeModal(overlay);
+});
+
+// Hide images that fail to load (artwork URLs can expire or be blocked by CSP)
+document.addEventListener('error', (e) => {
+  if (e.target instanceof HTMLImageElement) e.target.style.visibility = 'hidden';
+}, true);
+
+/** Replace a button's content with a spinner while `fn` runs. */
+export async function withBusyButton(btn, fn) {
+  const original = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = SPINNER;
+  try {
+    return await fn();
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = original;
+  }
+}
+
+/** Minimal event bus between views. */
+const listeners = new Map();
+export const bus = {
+  on(event, fn) {
+    if (!listeners.has(event)) listeners.set(event, new Set());
+    listeners.get(event).add(fn);
+  },
+  emit(event, payload) {
+    listeners.get(event)?.forEach((fn) => fn(payload));
+  },
+};

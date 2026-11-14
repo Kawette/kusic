@@ -2,26 +2,90 @@
 import axios from "axios";
 import type { Track, Playlist } from "../types.js";
 
+const API = "https://api.spotify.com/v1";
+const PAGE_SIZE = 100;
+const ITEM_FIELDS = "id,name,type,is_local,artists(name),album(name,images),duration_ms,external_urls";
+
+interface SpotifyItem {
+  id: string | null;
+  name: string;
+  type?: string;
+  is_local?: boolean;
+  artists?: { name: string }[];
+  album?: { name?: string; images?: { url: string }[] };
+  duration_ms: number;
+  external_urls?: { spotify?: string };
+}
+
+/** Playlist entries: since Feb 2026 the object is under `item` (was `track`). */
+interface PlaylistEntry {
+  is_local?: boolean;
+  item?: SpotifyItem | null;
+  track?: SpotifyItem | null;
+}
+
+/**
+ * Convert a playlist entry to a Track. Podcast episodes and local files
+ * (no Spotify id) are skipped.
+ */
+export function mapPlaylistEntry(entry: PlaylistEntry): Track | null {
+  const item = entry.item ?? entry.track;
+  if (!item || entry.is_local || item.is_local || !item.id) return null;
+  if (item.type && item.type !== "track") return null;
+
+  return {
+    id: `spotify_${item.id}`,
+    source: "spotify",
+    title: item.name,
+    artist: (item.artists || []).map((a) => a.name).join(", "),
+    album: item.album?.name || "",
+    artwork: item.album?.images?.[1]?.url || item.album?.images?.[0]?.url || "",
+    duration: item.duration_ms,
+    spotifyUrl: item.external_urls?.spotify,
+    addedAt: Date.now(),
+  };
+}
+
+export function extractPlaylistId(url: string): string {
+  const match = url.match(/playlist[/:]([a-zA-Z0-9]+)/);
+  if (!match) throw new Error("URL de playlist Spotify invalide");
+  return match[1];
+}
+
+/** Turn API failures into messages the user can act on. */
+function explain(err: unknown): Error {
+  if (!axios.isAxiosError(err) || !err.response) {
+    return new Error(`Spotify injoignable : ${(err as Error).message}`);
+  }
+  switch (err.response.status) {
+    case 400:
+    case 401:
+      return new Error("Identifiants Spotify invalides (vérifiez Client ID et Client Secret)");
+    case 403:
+    case 404:
+      return new Error(
+        "Playlist Spotify introuvable ou inaccessible (les playlists générées par Spotify ne sont pas accessibles via l'API)",
+      );
+    case 429:
+      return new Error("Trop de requêtes Spotify, réessayez dans quelques minutes");
+    default:
+      return new Error(`Erreur Spotify (HTTP ${err.response.status})`);
+  }
+}
+
 export class SpotifyService {
-  private clientId: string;
-  private clientSecret: string;
   private accessToken: string | null = null;
   private tokenExpiry = 0;
 
-  constructor(clientId: string, clientSecret: string) {
-    this.clientId = clientId;
-    this.clientSecret = clientSecret;
-  }
+  constructor(
+    private clientId: string,
+    private clientSecret: string,
+  ) {}
 
   private async authenticate(): Promise<void> {
-    if (this.accessToken && Date.now() < this.tokenExpiry) {
-      return;
-    }
+    if (this.accessToken && Date.now() < this.tokenExpiry) return;
 
-    const credentials = Buffer.from(
-      `${this.clientId}:${this.clientSecret}`,
-    ).toString("base64");
-
+    const credentials = Buffer.from(`${this.clientId}:${this.clientSecret}`).toString("base64");
     const response = await axios.post(
       "https://accounts.spotify.com/api/token",
       "grant_type=client_credentials",
@@ -37,83 +101,72 @@ export class SpotifyService {
     this.tokenExpiry = Date.now() + response.data.expires_in * 1000 - 60000;
   }
 
-  private extractPlaylistId(url: string): string {
-    const match = url.match(/playlist[/:]([a-zA-Z0-9]+)/);
-    if (!match) throw new Error("URL de playlist Spotify invalide");
-    return match[1];
+  private async get(url: string, params: Record<string, unknown> = {}) {
+    await this.authenticate();
+    return axios.get(url, {
+      headers: { Authorization: `Bearer ${this.accessToken}` },
+      params,
+    });
+  }
+
+  /** Check the credentials (used by the "Tester" button). */
+  async testCredentials(): Promise<void> {
+    try {
+      await this.authenticate();
+    } catch (err) {
+      throw explain(err);
+    }
   }
 
   async getPlaylist(url: string): Promise<Playlist> {
-    await this.authenticate();
+    const playlistId = extractPlaylistId(url);
+    try {
+      const { data: playlist } = await this.get(`${API}/playlists/${playlistId}`, {
+        fields: "id,name,description,images,external_urls,items(total),tracks(total)",
+      });
+      const tracks = await this.getAllPlaylistTracks(playlistId);
 
-    const playlistId = this.extractPlaylistId(url);
-
-    const playlistRes = await axios.get(
-      `https://api.spotify.com/v1/playlists/${playlistId}`,
-      {
-        headers: { Authorization: `Bearer ${this.accessToken}` },
-        params: {
-          fields: "id,name,description,images,external_urls,tracks.total",
-        },
-      },
-    );
-
-    const playlist = playlistRes.data;
-    const tracks = await this.getAllPlaylistTracks(playlistId);
-
-    return {
-      id: `spotify_${playlist.id}`,
-      source: "spotify",
-      name: playlist.name,
-      description: playlist.description || "",
-      url: playlist.external_urls.spotify,
-      artwork: playlist.images?.[0]?.url || "",
-      totalTracks: playlist.tracks.total,
-      tracks,
-      addedAt: Date.now(),
-    };
+      return {
+        id: `spotify_${playlist.id}`,
+        source: "spotify",
+        name: playlist.name,
+        description: playlist.description || "",
+        url: playlist.external_urls.spotify,
+        artwork: playlist.images?.[0]?.url || "",
+        totalTracks: playlist.items?.total ?? playlist.tracks?.total ?? tracks.length,
+        tracks,
+        addedAt: Date.now(),
+      };
+    } catch (err) {
+      throw explain(err);
+    }
   }
 
   private async getAllPlaylistTracks(playlistId: string): Promise<Track[]> {
-    const tracks: Track[] = [];
-    const limit = 100;
-
-    for (let offset = 0; ; offset += limit) {
-      const response = await axios.get(
-        `https://api.spotify.com/v1/playlists/${playlistId}/tracks`,
-        {
-          headers: { Authorization: `Bearer ${this.accessToken}` },
-          params: {
-            offset,
-            limit,
-            fields:
-              "items(track(id,name,artists,album,duration_ms,external_urls,preview_url)),next",
-          },
-        },
-      );
-
-      for (const item of response.data.items) {
-        if (!item.track) continue;
-
-        const track = item.track;
-        tracks.push({
-          id: `spotify_${track.id}`,
-          source: "spotify",
-          title: track.name,
-          artist: track.artists.map((a: { name: string }) => a.name).join(", "),
-          album: track.album?.name || "",
-          artwork:
-            track.album?.images?.[1]?.url ||
-            track.album?.images?.[0]?.url ||
-            "",
-          duration: track.duration_ms,
-          spotifyUrl: track.external_urls.spotify,
-          previewUrl: track.preview_url,
-          addedAt: Date.now(),
-        });
+    try {
+      return await this.fetchEntries(`${API}/playlists/${playlistId}/items`, "item");
+    } catch (err) {
+      // Fall back to the pre-2026 endpoint while it still exists
+      if (axios.isAxiosError(err) && [403, 404, 410].includes(err.response?.status ?? 0)) {
+        return this.fetchEntries(`${API}/playlists/${playlistId}/tracks`, "track");
       }
+      throw err;
+    }
+  }
 
-      if (!response.data.next) return tracks;
+  private async fetchEntries(endpoint: string, key: "item" | "track"): Promise<Track[]> {
+    const tracks: Track[] = [];
+    for (let offset = 0; ; offset += PAGE_SIZE) {
+      const { data } = await this.get(endpoint, {
+        offset,
+        limit: PAGE_SIZE,
+        fields: `items(is_local,${key}(${ITEM_FIELDS})),next`,
+      });
+      for (const entry of data.items as PlaylistEntry[]) {
+        const track = mapPlaylistEntry(entry);
+        if (track) tracks.push(track);
+      }
+      if (!data.next) return tracks;
     }
   }
 }

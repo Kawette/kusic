@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; img-src 'self' https://*.scdn.co https://*.spotify.com https://*.soundcloud.com https://i1.sndcdn.com data:; style-src 'self' 'unsafe-inline'; script-src 'self';"
+      content="default-src 'self'; img-src 'self' kusic-cover: https://*.scdn.co https://*.spotifycdn.com https://*.spotify.com https://*.soundcloud.com https://*.sndcdn.com data:; style-src 'self' 'unsafe-inline'; script-src 'self';"
     />
     <title>Kusic</title>
     <link rel="stylesheet" href="styles.css" />
@@ -14,17 +14,8 @@
     <!-- Titlebar drag region -->
     <div class="titlebar">
       <div class="titlebar-logo">
-        <svg
-          width="20"
-          height="20"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-        >
-          <path d="M9 18V5l12-2v13" />
-          <circle cx="6" cy="18" r="3" />
-          <circle cx="18" cy="16" r="3" />
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M9 18V5l12-2v13" /><circle cx="6" cy="18" r="3" /><circle cx="18" cy="16" r="3" />
         </svg>
         <span>Kusic</span>
       </div>
@@ -35,81 +26,43 @@
       <nav class="sidebar">
         <div class="nav-section">
           <button class="nav-btn active" data-view="tracks">
-            <svg
-              width="18"
-              height="18"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-            >
-              <path d="M9 18V5l12-2v13" />
-              <circle cx="6" cy="18" r="3" />
-              <circle cx="18" cy="16" r="3" />
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M9 18V5l12-2v13" /><circle cx="6" cy="18" r="3" /><circle cx="18" cy="16" r="3" />
             </svg>
             <span>Toutes les pistes</span>
           </button>
           <button class="nav-btn" data-view="downloads">
-            <svg
-              width="18"
-              height="18"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-            >
-              <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
-              <polyline points="7 10 12 15 17 10" />
-              <line x1="12" y1="15" x2="12" y2="3" />
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" />
             </svg>
             <span>Téléchargements</span>
-            <span
-              class="nav-badge"
-              id="nav-download-badge"
-              style="display: none"
-              >0</span
-            >
+            <span class="nav-badge" id="nav-download-badge" hidden>0</span>
+            <span class="nav-badge nav-badge-warning" id="nav-conflict-badge" title="Conflits à résoudre" hidden>0</span>
           </button>
           <button class="nav-btn" data-view="playlists">
-            <svg
-              width="18"
-              height="18"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-            >
-              <line x1="8" y1="6" x2="21" y2="6" />
-              <line x1="8" y1="12" x2="21" y2="12" />
-              <line x1="8" y1="18" x2="21" y2="18" />
-              <line x1="3" y1="6" x2="3.01" y2="6" />
-              <line x1="3" y1="12" x2="3.01" y2="12" />
-              <line x1="3" y1="18" x2="3.01" y2="18" />
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="8" y1="6" x2="21" y2="6" /><line x1="8" y1="12" x2="21" y2="12" /><line x1="8" y1="18" x2="21" y2="18" />
+              <line x1="3" y1="6" x2="3.01" y2="6" /><line x1="3" y1="12" x2="3.01" y2="12" /><line x1="3" y1="18" x2="3.01" y2="18" />
             </svg>
             <span>Playlists</span>
           </button>
           <button class="nav-btn" data-view="settings">
-            <svg
-              width="18"
-              height="18"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-            >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <circle cx="12" cy="12" r="3" />
-              <path
-                d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"
-              />
+              <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" />
             </svg>
             <span>Paramètres</span>
           </button>
         </div>
 
-        <div class="sidebar-stats" id="sidebar-stats">
+        <div class="sidebar-stats">
           <div class="stat-item">
             <span class="stat-value" id="stat-tracks">0</span>
             <span class="stat-label">Pistes</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-value" id="stat-missing">0</span>
+            <span class="stat-label">Manquantes</span>
           </div>
           <div class="stat-item">
             <span class="stat-value" id="stat-playlists">0</span>
@@ -123,76 +76,39 @@
         <!-- ═══ TRACKS VIEW ═══ -->
         <section class="view active" id="view-tracks">
           <div class="view-header">
-            <h1>Toutes les pistes</h1>
+            <h1 id="tracks-title">Toutes les pistes</h1>
             <div class="view-header-actions">
-              <button
-                class="btn-secondary"
-                id="btn-auto-search"
-                title="Recherche automatique"
-              >
-                <svg
-                  width="16"
-                  height="16"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                >
-                  <polygon points="5 3 19 12 5 21 5 3" />
-                </svg>
+              <button class="btn-secondary" id="btn-auto-search" title="Rechercher sur Soulseek les pistes affichées sans fichier (aucun téléchargement automatique)">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3" /></svg>
                 <span id="auto-search-text">Recherche auto</span>
                 <span id="auto-search-status"></span>
               </button>
-              <button
-                class="btn-secondary"
-                id="btn-refresh-tracks"
-                title="Synchroniser la bibliothèque"
-              >
-                <svg
-                  width="16"
-                  height="16"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                >
-                  <polyline points="23 4 23 10 17 10" />
-                  <polyline points="1 20 1 14 7 14" />
-                  <path
-                    d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"
-                  />
+              <button class="btn-secondary" id="btn-refresh-tracks" title="Synchroniser les playlists">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="23 4 23 10 17 10" /><polyline points="1 20 1 14 7 14" /><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15" />
                 </svg>
               </button>
             </div>
           </div>
           <div class="view-controls">
             <div class="search-box">
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-              >
-                <circle cx="11" cy="11" r="8" />
-                <line x1="21" y1="21" x2="16.65" y2="16.65" />
-              </svg>
-              <input
-                type="text"
-                id="search-input"
-                placeholder="Rechercher une piste..."
-              />
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
+              <input type="text" id="search-input" placeholder="Rechercher une piste..." />
             </div>
             <select id="filter-source" class="select-control">
               <option value="all">Toutes les sources</option>
+              <option value="missing">Manquantes</option>
               <option value="spotify">Spotify</option>
               <option value="soundcloud">SoundCloud</option>
               <option value="local">Local</option>
               <option value="unknown">Inconnu</option>
             </select>
+            <select id="filter-playlist" class="select-control">
+              <option value="">Toutes les playlists</option>
+            </select>
             <select id="sort-by" class="select-control">
               <option value="recent">Plus récent</option>
+              <option value="playlist">Ordre de la playlist</option>
               <option value="title">Titre A-Z</option>
               <option value="artist">Artiste A-Z</option>
               <option value="duration">Durée</option>
@@ -200,27 +116,18 @@
           </div>
 
           <div class="track-list-header">
-            <span class="col-num">#</span>
-            <span class="col-title">Titre</span>
-            <span class="col-album">Album</span>
-            <span class="col-source">Source</span>
-            <span class="col-duration">Durée</span>
-            <span class="col-actions"></span>
+            <span>#</span>
+            <span>Titre</span>
+            <span>Album</span>
+            <span>Source</span>
+            <span>Durée</span>
+            <span>Fichier</span>
           </div>
 
           <div class="track-list" id="track-list">
             <div class="empty-state" id="tracks-empty">
-              <svg
-                width="64"
-                height="64"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="1"
-              >
-                <path d="M9 18V5l12-2v13" />
-                <circle cx="6" cy="18" r="3" />
-                <circle cx="18" cy="16" r="3" />
+              <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+                <path d="M9 18V5l12-2v13" /><circle cx="6" cy="18" r="3" /><circle cx="18" cy="16" r="3" />
               </svg>
               <h2>Aucune piste</h2>
               <p>Ajoutez une playlist Spotify ou SoundCloud pour commencer</p>
@@ -233,116 +140,26 @@
           <div class="view-header">
             <h1>Playlists</h1>
             <div class="view-header-actions">
-              <button
-                class="btn-secondary"
-                id="btn-refresh-playlists"
-                title="Synchroniser la bibliothèque"
-              >
-                <svg
-                  width="16"
-                  height="16"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                >
-                  <polyline points="23 4 23 10 17 10" />
-                  <polyline points="1 20 1 14 7 14" />
-                  <path
-                    d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"
-                  />
+              <button class="btn-secondary" id="btn-refresh-playlists" title="Synchroniser les playlists">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="23 4 23 10 17 10" /><polyline points="1 20 1 14 7 14" /><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15" />
                 </svg>
               </button>
               <button class="btn-primary" id="btn-add-playlist">
-                <svg
-                  width="16"
-                  height="16"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                >
-                  <line x1="12" y1="5" x2="12" y2="19" />
-                  <line x1="5" y1="12" x2="19" y2="12" />
-                </svg>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
                 Ajouter une playlist
               </button>
             </div>
           </div>
 
-          <!-- Add playlist modal -->
-          <div
-            class="modal-overlay"
-            id="add-playlist-modal"
-            style="display: none"
-          >
-            <div class="modal">
-              <h2>Ajouter une playlist</h2>
-              <p class="modal-desc">
-                Collez l'URL d'une playlist Spotify ou SoundCloud
-              </p>
-              <input
-                type="text"
-                id="playlist-url-input"
-                class="input-field"
-                placeholder="https://open.spotify.com/playlist/... ou https://soundcloud.com/..."
-              />
-              <div class="modal-actions">
-                <button class="btn-secondary" id="btn-cancel-add">
-                  Annuler
-                </button>
-                <button class="btn-primary" id="btn-confirm-add">
-                  <span class="btn-text">Ajouter</span>
-                  <span class="btn-loader" style="display: none">
-                    <svg
-                      class="spinner"
-                      width="16"
-                      height="16"
-                      viewBox="0 0 24 24"
-                    >
-                      <circle
-                        cx="12"
-                        cy="12"
-                        r="10"
-                        fill="none"
-                        stroke="currentColor"
-                        stroke-width="3"
-                        stroke-dasharray="30 70"
-                      />
-                    </svg>
-                  </span>
-                </button>
-              </div>
-              <div
-                class="modal-error"
-                id="add-error"
-                style="display: none"
-              ></div>
-            </div>
-          </div>
-
           <div class="playlist-grid" id="playlist-grid">
             <div class="empty-state" id="playlists-empty">
-              <svg
-                width="64"
-                height="64"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="1"
-              >
-                <line x1="8" y1="6" x2="21" y2="6" />
-                <line x1="8" y1="12" x2="21" y2="12" />
-                <line x1="8" y1="18" x2="21" y2="18" />
-                <line x1="3" y1="6" x2="3.01" y2="6" />
-                <line x1="3" y1="12" x2="3.01" y2="12" />
-                <line x1="3" y1="18" x2="3.01" y2="18" />
+              <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+                <line x1="8" y1="6" x2="21" y2="6" /><line x1="8" y1="12" x2="21" y2="12" /><line x1="8" y1="18" x2="21" y2="18" />
+                <line x1="3" y1="6" x2="3.01" y2="6" /><line x1="3" y1="12" x2="3.01" y2="12" /><line x1="3" y1="18" x2="3.01" y2="18" />
               </svg>
               <h2>Aucune playlist</h2>
-              <p>
-                Cliquez sur "Ajouter une playlist" pour importer depuis Spotify
-                ou SoundCloud
-              </p>
+              <p>Cliquez sur « Ajouter une playlist » pour importer depuis Spotify ou SoundCloud</p>
             </div>
           </div>
         </section>
@@ -351,6 +168,7 @@
         <section class="view" id="view-settings">
           <div class="view-header">
             <h1>Paramètres</h1>
+            <span class="settings-saved" id="settings-saved" hidden>✓ Enregistré</span>
           </div>
 
           <div class="settings-content">
@@ -358,127 +176,72 @@
             <div class="settings-group">
               <h3>
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="#1DB954">
-                  <path
-                    d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"
-                  />
+                  <path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z" />
                 </svg>
                 Spotify API
               </h3>
               <p class="setting-help">
                 Créez une app sur
-                <a
-                  href="https://developer.spotify.com/dashboard"
-                  id="link-spotify-dev"
-                  target="_blank"
-                  >developer.spotify.com</a
-                >
+                <a href="https://developer.spotify.com/dashboard" id="link-spotify-dev">developer.spotify.com</a>
                 pour obtenir vos identifiants.
               </p>
               <div class="setting-row">
-                <label>Client ID</label>
-                <input
-                  type="text"
-                  id="spotify-client-id"
-                  class="input-field"
-                  placeholder="Votre Client ID Spotify"
-                />
+                <label for="spotify-client-id">Client ID</label>
+                <input type="text" id="spotify-client-id" class="input-field" placeholder="Votre Client ID Spotify" />
               </div>
               <div class="setting-row">
-                <label>Client Secret</label>
-                <input
-                  type="password"
-                  id="spotify-client-secret"
-                  class="input-field"
-                  placeholder="Votre Client Secret Spotify"
-                />
+                <label for="spotify-client-secret">Client Secret</label>
+                <input type="password" id="spotify-client-secret" class="input-field" placeholder="Votre Client Secret Spotify" />
+              </div>
+              <div class="setting-test-row">
+                <button class="btn-small" id="btn-test-spotify">Tester</button>
+                <span class="setting-test-result" id="spotify-test-result"></span>
               </div>
             </div>
 
             <!-- Soulseek settings -->
-            <div class="settings-group">
+            <div class="settings-group" id="soulseek-settings">
               <h3>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="#6c5ce7">
-                  <path
-                    d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"
-                  />
-                </svg>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="#6c5ce7"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" /></svg>
                 Soulseek (slskd)
               </h3>
-              <p class="setting-help">
-                Connectez-vous au réseau Soulseek pour télécharger et partager
-                de la musique.
-              </p>
+              <p class="setting-help">Connectez-vous au réseau Soulseek pour télécharger et partager de la musique.</p>
+
+              <div class="platform-warning" id="platform-warning" hidden></div>
 
               <div class="slskd-status-bar" id="slskd-status-bar">
-                <span
-                  class="status-indicator"
-                  id="slskd-status-indicator"
-                ></span>
+                <span class="status-indicator" id="slskd-status-indicator"></span>
                 <span id="slskd-status-text">Non connecté</span>
-                <button class="btn-small" id="btn-slskd-toggle">
-                  Démarrer
-                </button>
+                <button class="btn-small" id="btn-slskd-toggle">Démarrer</button>
               </div>
+              <div class="slskd-restart-notice" id="slskd-restart-notice" hidden>
+                <span>Redémarrez slskd pour appliquer les changements</span>
+                <button class="btn-small btn-accent" id="btn-slskd-restart">Redémarrer</button>
+              </div>
+              <div class="slskd-last-error" id="slskd-last-error" hidden></div>
 
               <div class="setting-row">
-                <label>Pseudo Soulseek</label>
-                <input
-                  type="text"
-                  id="soulseek-username"
-                  class="input-field"
-                  placeholder="Votre pseudo Soulseek"
-                />
+                <label for="soulseek-username">Pseudo Soulseek</label>
+                <input type="text" id="soulseek-username" class="input-field" placeholder="Votre pseudo Soulseek" />
               </div>
               <div class="setting-row">
-                <label>Mot de passe Soulseek</label>
-                <input
-                  type="password"
-                  id="soulseek-password"
-                  class="input-field"
-                  placeholder="Votre mot de passe Soulseek"
-                />
+                <label for="soulseek-password">Mot de passe Soulseek</label>
+                <input type="password" id="soulseek-password" class="input-field" placeholder="Votre mot de passe Soulseek" />
               </div>
               <div class="setting-row">
-                <label>Dossier Bibliothèque (téléchargements + partage)</label>
+                <label for="soulseek-library-path">Dossier de la bibliothèque (téléchargements + partage)</label>
                 <div class="setting-input-row">
-                  <input
-                    type="text"
-                    id="soulseek-library-path"
-                    class="input-field"
-                    placeholder="C:\Users\...\Ma Musique"
-                    readonly
-                  />
-                  <button class="btn-secondary" id="btn-browse-library">
-                    <svg
-                      width="16"
-                      height="16"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="2"
-                    >
-                      <path
-                        d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"
-                      />
-                    </svg>
+                  <input type="text" id="soulseek-library-path" class="input-field" placeholder="C:\Users\...\Ma Musique" readonly />
+                  <button class="btn-secondary" id="btn-browse-library" title="Choisir le dossier">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z" /></svg>
                   </button>
                 </div>
               </div>
 
               <div class="slskd-binary-status" id="slskd-binary-status">
                 <span id="slskd-binary-text">Vérification de slskd...</span>
-                <button
-                  class="btn-small btn-accent"
-                  id="btn-download-slskd"
-                  style="display: none"
-                >
-                  Télécharger slskd
-                </button>
-                <div
-                  class="progress-bar"
-                  id="slskd-download-progress"
-                  style="display: none"
-                >
+                <button class="btn-small btn-accent" id="btn-download-slskd" hidden>Télécharger slskd</button>
+                <div class="progress-bar" id="slskd-download-progress" hidden>
                   <div class="progress-fill" id="slskd-download-fill"></div>
                 </div>
               </div>
@@ -490,29 +253,23 @@
         <section class="view" id="view-downloads">
           <div class="view-header">
             <h1>Téléchargements</h1>
-            <button
-              class="dl-clear-btn"
-              id="dl-clear-btn"
-              style="display: none"
-            >
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-              >
-                <polyline points="3 6 5 6 21 6" />
-                <path
-                  d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"
-                />
-              </svg>
-              Nettoyer
-            </button>
+            <div class="view-header-actions">
+              <button class="btn-secondary" id="btn-open-library" title="Ouvrir le dossier de la bibliothèque">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z" /></svg>
+                Ouvrir le dossier
+              </button>
+              <button class="dl-clear-btn" id="dl-clear-failed" hidden>Vider les échecs</button>
+              <button class="dl-clear-btn" id="dl-clear-done" hidden>Vider les terminés</button>
+            </div>
           </div>
 
           <div class="downloads-content">
+            <div class="conflicts-section" id="conflicts-section" hidden>
+              <h3>Conflits à résoudre</h3>
+              <p class="setting-help">Ces fichiers n'ont pas été rangés car la piste a déjà un fichier ou le nom est déjà pris. Rien n'est supprimé sans votre choix.</p>
+              <div id="conflicts-list"></div>
+            </div>
+
             <div class="downloads-summary" id="downloads-summary"></div>
             <div class="download-list-header">
               <span class="dl-col-name">Fichier</span>
@@ -524,22 +281,11 @@
             </div>
             <div class="download-view-list" id="download-view-list">
               <div class="empty-state" id="downloads-empty">
-                <svg
-                  width="64"
-                  height="64"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="1"
-                >
-                  <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
-                  <polyline points="7 10 12 15 17 10" />
-                  <line x1="12" y1="15" x2="12" y2="3" />
+                <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+                  <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" />
                 </svg>
                 <h2>Aucun téléchargement</h2>
-                <p>
-                  Les téléchargements lancés depuis Soulseek apparaîtront ici
-                </p>
+                <p>Les téléchargements lancés depuis Soulseek apparaîtront ici</p>
               </div>
             </div>
           </div>
@@ -547,138 +293,114 @@
       </main>
     </div>
 
-    <!-- Soulseek Download Modal -->
-    <div class="modal-overlay" id="slskd-modal" style="display: none">
-      <div class="modal modal-large">
+    <!-- Add playlist modal -->
+    <div class="modal-overlay" id="add-playlist-modal" hidden>
+      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="add-playlist-title">
+        <h2 id="add-playlist-title">Ajouter une playlist</h2>
+        <p class="modal-desc">Collez l'URL d'une playlist Spotify ou SoundCloud</p>
+        <input type="text" id="playlist-url-input" class="input-field" placeholder="https://open.spotify.com/playlist/... ou https://soundcloud.com/..." />
+        <div class="modal-actions">
+          <button class="btn-secondary" data-close-modal>Annuler</button>
+          <button class="btn-primary" id="btn-confirm-add">Ajouter</button>
+        </div>
+        <div class="modal-error" id="add-error" hidden></div>
+      </div>
+    </div>
+
+    <!-- Soulseek search modal -->
+    <div class="modal-overlay" id="slskd-modal" hidden>
+      <div class="modal modal-large" role="dialog" aria-modal="true" aria-labelledby="slskd-modal-title">
         <div class="modal-header">
-          <h2>Télécharger via Soulseek</h2>
-          <button class="btn-icon" id="btn-close-slskd-modal">
-            <svg
-              width="20"
-              height="20"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-            >
-              <line x1="18" y1="6" x2="6" y2="18" />
-              <line x1="6" y1="6" x2="18" y2="18" />
-            </svg>
+          <h2 id="slskd-modal-title">Télécharger via Soulseek</h2>
+          <button class="btn-icon" data-close-modal title="Fermer">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
           </button>
         </div>
+
+        <div class="slskd-target" id="slskd-target" hidden></div>
 
         <div class="slskd-search-bar">
-          <input
-            type="text"
-            class="slskd-search-input"
-            id="slskd-search-query"
-            placeholder="Recherche..."
-          />
-          <button
-            class="slskd-search-btn"
-            id="slskd-search-btn"
-            title="Relancer la recherche"
-          >
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-            >
-              <circle cx="11" cy="11" r="8" />
-              <line x1="21" y1="21" x2="16.65" y2="16.65" />
-            </svg>
+          <input type="text" class="slskd-search-input" id="slskd-search-query" placeholder="Recherche..." />
+          <button class="slskd-search-btn" id="slskd-search-btn" title="Relancer la recherche (ignore le cache)">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
           </button>
         </div>
 
-        <div class="slskd-search-status" id="slskd-search-status">
-          Recherche en cours...
+        <div class="slskd-filters">
+          <select id="result-format" class="select-control select-small">
+            <option value="">Tous formats</option>
+            <option value="lossless">Sans perte</option>
+            <option value="flac">FLAC</option>
+            <option value="mp3">MP3</option>
+          </select>
+          <select id="result-bitrate" class="select-control select-small">
+            <option value="0">Tout bitrate</option>
+            <option value="192">≥ 192 kbps</option>
+            <option value="256">≥ 256 kbps</option>
+            <option value="320">≥ 320 kbps</option>
+          </select>
+          <label class="checkbox-label"><input type="checkbox" id="result-free-slots" /> Slot libre</label>
+          <select id="result-sort" class="select-control select-small">
+            <option value="quality">Tri : qualité</option>
+            <option value="duration">Tri : durée la plus proche</option>
+            <option value="speed">Tri : vitesse</option>
+            <option value="size">Tri : taille</option>
+          </select>
+          <span class="slskd-search-status" id="slskd-search-status"></span>
         </div>
 
         <div class="slskd-results-container">
           <div class="slskd-results-header">
-            <span class="col-file">Fichier</span>
-            <span class="col-user">Utilisateur</span>
-            <span class="col-format">Format</span>
-            <span class="col-quality">Qualité</span>
-            <span class="col-size">Taille</span>
-            <span class="col-action">Action</span>
+            <span>Fichier</span>
+            <span>Utilisateur</span>
+            <span>Format</span>
+            <span>Qualité</span>
+            <span>Durée</span>
+            <span>Taille</span>
+            <span></span>
           </div>
-          <div class="slskd-results-list" id="slskd-results-list">
-            <div class="slskd-loading" id="slskd-loading">
-              <svg class="spinner" width="32" height="32" viewBox="0 0 24 24">
-                <circle
-                  cx="12"
-                  cy="12"
-                  r="10"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="3"
-                  stroke-dasharray="30 70"
-                />
-              </svg>
-              <p>Recherche sur le réseau Soulseek...</p>
-            </div>
-            <div
-              class="slskd-no-results"
-              id="slskd-no-results"
-              style="display: none"
-            >
-              <p>Aucun résultat trouvé</p>
-            </div>
-          </div>
+          <div class="slskd-results-list" id="slskd-results-list"></div>
         </div>
       </div>
     </div>
 
-    <!-- Identify Modal -->
-    <div class="modal-overlay" id="identify-modal" style="display: none">
-      <div class="modal-content identify-modal-content">
+    <!-- Identify modal -->
+    <div class="modal-overlay" id="identify-modal" hidden>
+      <div class="modal modal-large identify-modal-content" role="dialog" aria-modal="true" aria-labelledby="identify-modal-title">
         <div class="modal-header">
-          <h2>Identifier le morceau</h2>
-          <button class="btn-icon" id="btn-close-identify-modal">
-            <svg
-              width="20"
-              height="20"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-            >
-              <line x1="18" y1="6" x2="6" y2="18" />
-              <line x1="6" y1="6" x2="18" y2="18" />
-            </svg>
+          <h2 id="identify-modal-title">Identifier le morceau</h2>
+          <button class="btn-icon" data-close-modal title="Fermer">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
           </button>
         </div>
-
         <div class="identify-source-info">
           <span class="identify-label">Fichier :</span>
           <span class="identify-value" id="identify-source-title">—</span>
         </div>
-
         <div class="identify-search-bar">
-          <input
-            type="text"
-            class="identify-search-input"
-            id="identify-search-input"
-            placeholder="Rechercher dans la bibliothèque..."
-          />
+          <input type="text" class="identify-search-input" id="identify-search-input" placeholder="Rechercher dans les playlists..." />
         </div>
+        <p class="identify-hint">Suggestions classées par ressemblance. Cliquez sur un morceau pour lier le fichier.</p>
+        <div class="identify-results-list" id="identify-results-list"></div>
+      </div>
+    </div>
 
-        <div class="identify-results-list" id="identify-results-list">
-          <p class="identify-hint">
-            Recherchez un morceau de votre bibliothèque pour l'associer à ce
-            fichier.
-          </p>
+    <!-- Conflict modal -->
+    <div class="modal-overlay" id="conflict-modal" hidden>
+      <div class="modal modal-large" role="dialog" aria-modal="true" aria-labelledby="conflict-modal-title">
+        <div class="modal-header">
+          <h2 id="conflict-modal-title">Résoudre le conflit</h2>
+          <button class="btn-icon" data-close-modal title="Fermer">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+          </button>
         </div>
+        <div id="conflict-body"></div>
       </div>
     </div>
 
     <!-- Toast notifications -->
-    <div class="toast-container" id="toast-container"></div>
+    <div class="toast-container" id="toast-container" aria-live="polite"></div>
 
-    <script src="renderer.js"></script>
+    <script type="module" src="js/main.js"></script>
   </body>
 </html>

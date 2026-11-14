@@ -3,98 +3,49 @@ import fs from "fs";
 import path from "path";
 import yaml from "yaml";
 
-interface SlskdConfigOptions {
+export interface SlskdConfigOptions {
   username: string;
-  password: string;
   libraryPath: string;
-  webPort?: number;
-  listenPort?: number;
+  incompletePath: string;
+  webPort: number;
+  listenPort: number;
 }
 
-interface SlskdYamlConfig {
-  soulseek: {
-    username: string;
-    password: string;
-    description: string;
-    listen_port: number;
-  };
-  directories: {
-    downloads: string;
-    incomplete: string;
-  };
-  shares: {
-    directories: string[];
-    filters: { search: string[] };
-  };
-  web: {
-    port: number;
-    url_base: string;
-    authentication: { disabled: boolean };
-  };
-  global: {
-    upload: { slots: number };
-    download: { slots: number };
-  };
-  retention: {
-    transfers: {
-      upload: { succeeded: number; errored: number };
-      download: { succeeded: number; errored: number };
-    };
-  };
-}
-
+// Secrets (Soulseek password, API key) are passed through environment
+// variables by SlskdManager and never written to this file.
 export class SlskdConfig {
-  private configPath: string;
+  constructor(private configPath: string) {}
 
-  constructor(configPath: string) {
-    this.configPath = configPath;
-  }
+  generate(options: SlskdConfigOptions): void {
+    const { username, libraryPath, incompletePath, webPort, listenPort } = options;
 
-  generate(options: SlskdConfigOptions): { configPath: string } {
-    const {
-      username,
-      password,
-      libraryPath,
-      webPort = 5030,
-      listenPort = 50300,
-    } = options;
+    fs.mkdirSync(libraryPath, { recursive: true });
+    fs.mkdirSync(incompletePath, { recursive: true });
 
-    if (!fs.existsSync(libraryPath)) {
-      fs.mkdirSync(libraryPath, { recursive: true });
-    }
+    // Older versions kept partial downloads inside the library: never share them
+    const legacyIncomplete = path.join(libraryPath, ".incomplete");
+    const shareDirs = [libraryPath];
+    if (fs.existsSync(legacyIncomplete)) shareDirs.push(`!${legacyIncomplete}`);
 
-    const incompleteDir = path.join(libraryPath, ".incomplete");
-    if (!fs.existsSync(incompleteDir)) {
-      fs.mkdirSync(incompleteDir, { recursive: true });
-    }
-
-    const config: SlskdYamlConfig = {
+    const config = {
       soulseek: {
         username,
-        password,
         description: "Kusic User",
         listen_port: listenPort,
       },
       directories: {
         downloads: libraryPath,
-        incomplete: incompleteDir,
+        incomplete: incompletePath,
       },
       shares: {
-        directories: [libraryPath],
-        filters: {
-          search: [
-            "\\.ini$",
-            "\\.db$",
-            "\\.DS_Store$",
-            "Thumbs\\.db$",
-            "\\.incomplete$",
-          ],
-        },
+        directories: shareDirs,
+        filters: ["\\.ini$", "\\.db$", "Thumbs\\.db$", "\\.DS_Store$", "\\.part$"],
       },
       web: {
         port: webPort,
+        ip_address: "127.0.0.1",
         url_base: "/",
-        authentication: { disabled: true },
+        authentication: { disabled: false },
       },
       global: {
         upload: { slots: 5 },
@@ -108,9 +59,6 @@ export class SlskdConfig {
       },
     };
 
-    const yamlContent = yaml.stringify(config);
-    fs.writeFileSync(this.configPath, yamlContent, "utf8");
-
-    return { configPath: this.configPath };
+    fs.writeFileSync(this.configPath, yaml.stringify(config), "utf8");
   }
 }
