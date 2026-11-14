@@ -504,17 +504,6 @@ a:hover {
   color: white;
 }
 
-/* A source was chosen: a clock, the file is on its way */
-.track-download-btn.pending {
-  opacity: 1;
-  color: var(--success);
-}
-
-.track-download-btn.pending:hover {
-  background: var(--success);
-  color: white;
-}
-
 .source-badge {
   display: inline-flex;
   align-items: center;
