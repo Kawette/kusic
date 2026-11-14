@@ -8,6 +8,7 @@ import {
   SOURCE_LABELS,
   toastError,
 } from './ui.js';
+import { playTrack } from './player.js';
 
 const modal = $('#identify-modal');
 const sourceTitle = $('#identify-source-title');
@@ -71,6 +72,8 @@ export async function openIdentify(track) {
   if (!track.suggestedTrackIds) searchInput.value = track.title;
   render();
 }
+
+$('#identify-play').addEventListener('click', () => source && playTrack(source));
 
 let debounce;
 searchInput.addEventListener('input', () => {

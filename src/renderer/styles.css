@@ -1945,9 +1945,11 @@ button.identify-result-row {
 }
 
 /* ─── Track menu, matches ────────────────────────────────────── */
-.source-badge.matched {
-  background: rgba(108, 92, 231, 0.18);
+/* "Inconnu" lit up when a playlist track matches the file */
+.source-badge.unknown.matched {
+  background: rgba(108, 92, 231, 0.22);
   color: var(--accent-hover);
+  box-shadow: 0 0 0 1px rgba(124, 108, 247, 0.5);
 }
 
 .context-menu {
@@ -2060,4 +2062,144 @@ button.identify-result-row {
 .track-list-header .col-file {
   text-align: right;
   padding-right: 6px;
+}
+
+/* ─── Player ─────────────────────────────────────────────────── */
+.track-num {
+  position: relative;
+}
+
+.track-play-btn {
+  display: none;
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 28px;
+  height: 28px;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 50%;
+  background: none;
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.track-row:hover .track-play-btn,
+.track-row.playing .track-play-btn {
+  display: flex;
+}
+
+.track-row:hover .track-num:has(.track-play-btn) .track-index,
+.track-row.playing .track-index {
+  visibility: hidden;
+}
+
+.track-row.playing .track-title {
+  color: var(--accent-hover);
+}
+
+.player {
+  position: fixed;
+  left: 244px;
+  bottom: 24px;
+  z-index: 250;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: min(620px, calc(100vw - 600px));
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg-secondary);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+
+.player-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  flex: 0 1 200px;
+}
+
+.player-art {
+  width: 36px;
+  height: 36px;
+  border-radius: 4px;
+  object-fit: cover;
+  background: var(--bg-active);
+  flex-shrink: 0;
+}
+
+.player-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.player-title,
+.player-artist {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.player-title {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.player-artist {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.player-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  border: none;
+  border-radius: 50%;
+  background: var(--accent);
+  color: white;
+  cursor: pointer;
+}
+
+.player-btn.player-close {
+  width: 26px;
+  height: 26px;
+  background: none;
+  color: var(--text-muted);
+}
+
+.player-btn.player-close:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+.player-time {
+  font-size: 11px;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.player-seek {
+  flex: 1;
+  min-width: 60px;
+  accent-color: var(--accent);
+}
+
+.conflict-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+/* Keep the last rows reachable above the player */
+body.has-player .track-list,
+body.has-player .download-view-list {
+  padding-bottom: 80px;
 }

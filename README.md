@@ -13,7 +13,9 @@ Agrégateur de playlists Spotify & SoundCloud avec téléchargement via Soulseek
   - cache des résultats conservé entre les redémarrages
 - Les fichiers téléchargés sont tagués (titre, artiste, album, lien `[KUSIC:id]`) et rangés en `Artiste - Titre.ext`
 - **Conflits** : si une piste a déjà un fichier ou si le nom est pris, rien n'est écrasé ; vous comparez les deux fichiers et choisissez lequel garder (l'autre va à la corbeille)
-- Identification assistée des fichiers inconnus (suggestions classées, lien uniquement sur clic)
+- Fichiers inconnus : correspondance stricte (même titre, même artiste) signalée en couleur, lien uniquement sur clic
+- Lecteur intégré pour les fichiers locaux (aussi depuis la comparaison de conflit et l'identification)
+- Suppression d'un fichier local (corbeille) depuis le menu ⋯ d'une piste
 - Amélioration de qualité manuelle (recherche FLAC pour les pistes en MP3)
 
 ## Prérequis
@@ -26,7 +28,7 @@ Agrégateur de playlists Spotify & SoundCloud avec téléchargement via Soulseek
 ```bash
 npm install
 npm start          # build + lancement
-npm run dev        # idem avec les DevTools
+npm run dev        # idem avec les DevTools ; l'interface se recharge seule quand src/renderer change
 npm test           # tests unitaires (vitest)
 npm run typecheck
 npm run dist       # installeur Windows dans release/

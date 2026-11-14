@@ -1,10 +1,12 @@
 // ─── Kusic Main Process ─────────────────────────────────────
-import { app, BrowserWindow, ipcMain, dialog, shell } from "electron";
+import { app, BrowserWindow, ipcMain, dialog, protocol, shell } from "electron";
+import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import { store } from "./store.js";
 import { Library } from "./library/library.js";
-import { registerCoverScheme, handleCoverProtocol } from "./library/covers.js";
+import { coverSchemePrivileges, handleCoverProtocol } from "./library/covers.js";
+import { audioSchemePrivileges, handleAudioProtocol } from "./library/audio.js";
 import { isInside } from "./library/naming.js";
 import { DownloadTracker, isSucceeded } from "./downloads.js";
 import {
@@ -80,13 +82,30 @@ function createWindow(): void {
   mainWindow.webContents.on("will-navigate", (e) => e.preventDefault());
   mainWindow.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
 
-  mainWindow.loadFile(path.join(__dirname, "../renderer/index.html")).catch((err) => {
+  // In dev the UI is served from the sources and reloads when they change
+  const dev = process.argv.includes("--dev");
+  const rendererDir = dev
+    ? path.join(__dirname, "../../src/renderer")
+    : path.join(__dirname, "../renderer");
+  mainWindow.loadFile(path.join(rendererDir, "index.html")).catch((err) => {
     console.error("[Kusic] Failed to load UI:", err);
   });
 
-  if (process.argv.includes("--dev")) {
+  if (dev) {
     mainWindow.webContents.openDevTools();
+    watchRenderer(rendererDir);
   }
+}
+
+/** Dev only: reload the window when a renderer file changes. */
+function watchRenderer(dir: string): void {
+  let timer: NodeJS.Timeout | undefined;
+  fs.watch(dir, { recursive: true }, () => {
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.reloadIgnoringCache();
+    }, 200);
+  });
 }
 
 async function autoStartSlskd(): Promise<void> {
@@ -101,7 +120,8 @@ async function autoStartSlskd(): Promise<void> {
   }
 }
 
-registerCoverScheme();
+// Must run before app ready (single call for all custom schemes)
+protocol.registerSchemesAsPrivileged([coverSchemePrivileges, audioSchemePrivileges]);
 
 if (!app.requestSingleInstanceLock()) {
   // Kusic is already running: the other instance gets focused
@@ -114,6 +134,7 @@ if (!app.requestSingleInstanceLock()) {
 
   app.whenReady().then(() => {
     handleCoverProtocol();
+    handleAudioProtocol(() => store.get("soulseek").libraryPath);
     pruneSearchCache();
     createWindow();
     // Pick up files changed outside Kusic (also migrates older index formats)

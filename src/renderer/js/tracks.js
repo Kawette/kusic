@@ -7,6 +7,7 @@ import {
 import { cachedCount, isSearching, openSearch, toggleAutoSearch } from './search.js';
 import { isFinished, transferForTrack } from './downloads.js';
 import { openIdentify } from './identify.js';
+import { isPlaying, playTrack } from './player.js';
 
 const searchInput = $('#search-input');
 const filterSource = $('#filter-source');
@@ -123,11 +124,14 @@ function rowHtml(track, i) {
   statusCache.set(track.id, status);
   const canIdentify = !track.playlistIds && track.filePath;
   const badge = track.suggestedTrackIds
-    ? `<span class="source-badge matched" title="Un morceau de vos playlists correspond à ce fichier : cliquez sur la loupe pour vérifier et lier">● À lier</span>`
+    ? `<span class="source-badge unknown matched" title="Un morceau de vos playlists correspond à ce fichier : cliquez sur la loupe pour vérifier et lier">${SOURCE_LABELS.unknown}</span>`
     : `<span class="source-badge ${escapeHtml(track.source)}">${SOURCE_LABELS[track.source] || SOURCE_LABELS.unknown}</span>`;
   return `
     <div class="track-row" data-track-id="${escapeHtml(track.id)}">
-      <span class="track-num">${i + 1}</span>
+      <span class="track-num">
+        <span class="track-index">${i + 1}</span>
+        ${track.filePath ? `<button class="track-play-btn" data-action="play" title="Écouter">${icon(PLAY_ICON, 14)}</button>` : ''}
+      </span>
       <div class="track-title-cell">
         ${track.artwork ? `<img class="track-thumb" src="${escapeHtml(track.artwork)}" alt="" loading="lazy">` : '<span class="track-thumb"></span>'}
         <div class="track-info">
@@ -158,6 +162,7 @@ function render() {
     return;
   }
   trackList.innerHTML = tracks.map(rowHtml).join('');
+  markPlaying();
 }
 
 /** Refresh only the status cells that changed (search/download progress). */
@@ -182,6 +187,24 @@ function scheduleStatusRefresh() {
 }
 
 bus.on('search:changed', scheduleStatusRefresh);
+
+// Highlight the row being played
+const PLAY_ICON = '<polygon points="6 4 20 12 6 20 6 4" fill="currentColor"/>';
+const PAUSE_ICON = '<rect x="6" y="4" width="4" height="16" fill="currentColor"/><rect x="14" y="4" width="4" height="16" fill="currentColor"/>';
+function markPlaying() {
+  for (const row of trackList.querySelectorAll('.track-row')) {
+    const track = byId.get(row.dataset.trackId);
+    const playing = !!track?.filePath && isPlaying(track.filePath);
+    if (row.classList.contains('playing') === playing) continue;
+    row.classList.toggle('playing', playing);
+    const btn = row.querySelector('.track-play-btn');
+    if (btn) {
+      btn.innerHTML = icon(playing ? PAUSE_ICON : PLAY_ICON, 14);
+      btn.title = playing ? 'Pause' : 'Écouter';
+    }
+  }
+}
+bus.on('player:changed', markPlaying);
 bus.on('downloads:changed', scheduleStatusRefresh);
 
 trackList.addEventListener('click', (e) => {
@@ -192,6 +215,7 @@ trackList.addEventListener('click', (e) => {
   if (action === 'download') openSearch(track).catch(toastError);
   if (action === 'upgrade') openSearch(track, { format: 'flac' }).catch(toastError);
   if (action === 'identify') openIdentify(track).catch(toastError);
+  if (action === 'play') playTrack(track);
   if (action === 'conflict') bus.emit('conflict:open', track.conflictId);
   if (action === 'menu') {
     const rect = actionEl.getBoundingClientRect();
@@ -216,6 +240,7 @@ function showTrackMenu(track, x, y) {
     items.push({ label: 'Identifier…', action: () => openIdentify(track).catch(toastError) });
   }
   if (track.filePath) {
+    items.push({ label: isPlaying(track.filePath) ? 'Pause' : 'Écouter', action: () => playTrack(track) });
     items.push({ label: 'Afficher dans le dossier', action: () => api.showInFolder(track.filePath) });
     items.push('separator');
     items.push({

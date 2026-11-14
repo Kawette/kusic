@@ -16,12 +16,10 @@ const HASH = /^[a-f0-9]{24}$/;
 
 const coversDir = () => path.join(app.getPath("userData"), "covers");
 
-/** Must run before app ready. */
-export function registerCoverScheme(): void {
-  protocol.registerSchemesAsPrivileged([
-    { scheme: COVER_SCHEME, privileges: { standard: true, secure: true } },
-  ]);
-}
+export const coverSchemePrivileges = {
+  scheme: COVER_SCHEME,
+  privileges: { standard: true, secure: true },
+};
 
 export function handleCoverProtocol(): void {
   protocol.handle(COVER_SCHEME, (request) => {

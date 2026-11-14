@@ -225,7 +225,8 @@ function applyFilters(results) {
     if (format === 'lossless' && !lossless) return false;
     if (format && format !== 'lossless' && r.extension !== format) return false;
     if (minBitrate && !lossless && (r.bitRate || 0) < minBitrate) return false;
-    if (filters.freeSlots.checked && !r.hasFreeUploadSlot) return false;
+    // Older cached results have no slot info: keep them
+    if (filters.freeSlots.checked && r.hasFreeUploadSlot === false) return false;
     return true;
   });
 

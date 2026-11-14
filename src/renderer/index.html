@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; img-src 'self' kusic-cover: https://*.scdn.co https://*.spotifycdn.com https://*.spotify.com https://*.soundcloud.com https://*.sndcdn.com data:; style-src 'self' 'unsafe-inline'; script-src 'self';"
+      content="default-src 'self'; img-src 'self' kusic-cover: https://*.scdn.co https://*.spotifycdn.com https://*.spotify.com https://*.soundcloud.com https://*.sndcdn.com data:; media-src kusic-audio:; style-src 'self' 'unsafe-inline'; script-src 'self';"
     />
     <title>Kusic</title>
     <link rel="stylesheet" href="styles.css" />
@@ -378,6 +378,7 @@
         <div class="identify-source-info">
           <span class="identify-label">Fichier :</span>
           <span class="identify-value" id="identify-source-title">—</span>
+          <button class="btn-secondary btn-small" id="identify-play">Écouter</button>
         </div>
         <div class="identify-search-bar">
           <input type="text" class="identify-search-input" id="identify-search-input" placeholder="Chercher un titre ou un artiste dans vos playlists..." />
@@ -401,6 +402,19 @@
     </div>
 
     <!-- Toast notifications -->
+    <!-- Local audio player -->
+    <div class="player" id="player" hidden>
+      <div class="player-info" id="player-info"></div>
+      <button class="player-btn" id="player-toggle" title="Pause"></button>
+      <span class="player-time" id="player-current">0:00</span>
+      <input type="range" class="player-seek" id="player-seek" min="0" max="0" step="0.1" value="0" />
+      <span class="player-time" id="player-total">0:00</span>
+      <button class="player-btn player-close" id="player-close" title="Fermer le lecteur">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+      </button>
+      <audio id="player-audio" preload="metadata"></audio>
+    </div>
+
     <div class="toast-container" id="toast-container" aria-live="polite"></div>
 
     <script type="module" src="js/main.js"></script>

@@ -7,6 +7,7 @@ import {
   formatSize, formatTime, openModal, qualityLabel, showToast, toastError, withBusyButton,
 } from './ui.js';
 import { loadConflicts } from './downloads.js';
+import { playFile } from './player.js';
 
 const modal = $('#conflict-modal');
 const body = $('#conflict-body');
@@ -30,7 +31,10 @@ function fileCard(title, file, track) {
       <dt>Lié à</dt><dd>${file.linkedTo.length ? file.linkedTo.map(escapeHtml).join('<br>') : '—'}</dd>
     </dl>
     <p class="conflict-path" title="${escapeHtml(file.path)}">${escapeHtml(file.path)}</p>
-    <button class="btn-secondary btn-small" data-show="${escapeHtml(file.path)}">Afficher dans le dossier</button>
+    <div class="conflict-buttons">
+      <button class="btn-secondary btn-small" data-play="${escapeHtml(file.path)}">Écouter</button>
+      <button class="btn-secondary btn-small" data-show="${escapeHtml(file.path)}">Afficher dans le dossier</button>
+    </div>
   </div>`;
 }
 
@@ -64,6 +68,12 @@ body.addEventListener('click', async (e) => {
   const show = e.target.closest('[data-show]');
   if (show) {
     api.showInFolder(show.dataset.show);
+    return;
+  }
+  const play = e.target.closest('[data-play]');
+  if (play) {
+    const title = play.closest('.conflict-card').querySelector('h4').textContent;
+    playFile(play.dataset.play, { title, artist: `${current.track.artist} — ${current.track.title}` });
     return;
   }
   const btn = e.target.closest('[data-choice]');
