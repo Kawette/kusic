@@ -29,7 +29,6 @@ contextBridge.exposeInMainWorld("kusic", {
   slskd: {
     checkPlatform: () => ipcRenderer.invoke("slskd-check-platform"),
     getVersion: () => ipcRenderer.invoke("slskd-get-version"),
-    checkBinary: () => ipcRenderer.invoke("slskd-check-binary"),
     downloadBinary: () => ipcRenderer.invoke("slskd-download-binary"),
     onDownloadProgress: (callback: (progress: number) => void) => {
       ipcRenderer.on("slskd-download-progress", (_, progress) =>
@@ -64,10 +63,5 @@ contextBridge.exposeInMainWorld("kusic", {
         filename,
         size,
       }),
-    clearCompletedDownloads: () =>
-      ipcRenderer.invoke("slskd-clear-completed-downloads"),
-    getUploads: () => ipcRenderer.invoke("slskd-get-uploads"),
-    rescanShares: () => ipcRenderer.invoke("slskd-rescan-shares"),
-    getShares: () => ipcRenderer.invoke("slskd-get-shares"),
   },
 });

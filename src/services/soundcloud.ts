@@ -2,6 +2,13 @@
 import axios from "axios";
 import type { Track, Playlist } from "../types.js";
 
+// SoundCloud rejects requests without a browser-like User-Agent
+const http = axios.create({
+  headers: {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+  },
+});
+
 interface SoundCloudTrack {
   id: number;
   title?: string;
@@ -29,12 +36,7 @@ export class SoundCloudService {
   async resolveClientId(): Promise<string> {
     if (this.clientId) return this.clientId;
 
-    const pageRes = await axios.get("https://soundcloud.com/", {
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-      },
-    });
+    const pageRes = await http.get("https://soundcloud.com/");
 
     const scriptUrls = pageRes.data.match(
       /https:\/\/a-v2\.sndcdn\.com\/assets\/[^\s"]+\.js/g,
@@ -48,18 +50,10 @@ export class SoundCloudService {
       i >= Math.max(0, scriptUrls.length - 5);
       i--
     ) {
-      const scriptRes = await axios.get(scriptUrls[i], {
-        headers: {
-          "User-Agent":
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-        },
-      });
+      const scriptRes = await http.get(scriptUrls[i]);
 
       const match = scriptRes.data.match(/client_id\s*:\s*"([a-zA-Z0-9]+)"/);
-      if (match) {
-        this.clientId = match[1];
-        return this.clientId as string;
-      }
+      if (match) return (this.clientId = match[1] as string);
     }
 
     throw new Error("Impossible de résoudre le client_id SoundCloud");
@@ -68,12 +62,8 @@ export class SoundCloudService {
   private async resolve(url: string): Promise<SoundCloudPlaylist> {
     const clientId = await this.resolveClientId();
 
-    const response = await axios.get("https://api-v2.soundcloud.com/resolve", {
+    const response = await http.get("https://api-v2.soundcloud.com/resolve", {
       params: { url, client_id: clientId },
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-      },
     });
 
     return response.data;
@@ -103,15 +93,8 @@ export class SoundCloudService {
     for (let i = 0; i < incompleteIds.length; i += 50) {
       const batch = incompleteIds.slice(i, i + 50);
       try {
-        const res = await axios.get("https://api-v2.soundcloud.com/tracks", {
-          params: {
-            ids: batch.join(","),
-            client_id: clientId,
-          },
-          headers: {
-            "User-Agent":
-              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-          },
+        const res = await http.get("https://api-v2.soundcloud.com/tracks", {
+          params: { ids: batch.join(","), client_id: clientId },
         });
 
         for (const track of res.data) {

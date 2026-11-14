@@ -8,6 +8,33 @@ let currentView = 'tracks';
 let completedDownloadIds = new Set();
 let currentSearchTrackId = null;  // Track ID being searched for download
 let downloadTrackMap = new Map(); // Map download filename -> playlist trackId
+let renderedTracks = new Map();   // trackId -> track currently shown in the list
+
+// ─── Shared markup ──────────────────────────────────────────
+const ICONS = {
+  download: '<path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>',
+  search: '<circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>',
+  check: '<polyline points="20 6 9 17 4 12"/>',
+  close: '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>',
+  retry: '<polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/>',
+  trash: '<polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/>',
+};
+
+function icon(paths, size) {
+  return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">${paths}</svg>`;
+}
+
+const SOURCE_LABELS = {
+  spotify: '●  Spotify',
+  soundcloud: '●  SoundCloud',
+  local: '●  Local',
+  unknown: '●  Inconnu'
+};
+
+/** Soulseek query for a track: "Artist Title". */
+function trackQuery(track) {
+  return `${track.artist} ${track.title}`.trim();
+}
 
 // ─── DOM References ─────────────────────────────────────────
 const $ = (sel) => document.querySelector(sel);
@@ -101,22 +128,13 @@ function renderTracks(tracks) {
 
   tracksEmpty.style.display = 'none';
   
+  renderedTracks = new Map(tracks.map(t => [t.id, t]));
+
   const html = tracks.map((track, i) => {
-    const hasLocalFile = !!track.format;
-    const searchQuery = `${track.artist} ${track.title}`.trim();
-    const isCached = hasCachedResults(searchQuery);
-    const downloadBtn = `
-        <button class="track-download-btn${isCached ? ' cached' : ''}" onclick="openSlskdSearch('${escapeJs(track.artist)}', '${escapeJs(track.title)}', '${escapeJs(track.id)}')" title="${isCached ? 'Résultats en cache' : 'Télécharger via Soulseek'}">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
-          </svg>
-        </button>
-      `;
-    
     // Format action content: quality if has local file, download button otherwise
     let actionHtml = '';
     let actionClass = 'track-actions';
-    if (hasLocalFile) {
+    if (track.format) {
       const fmt = track.format.toUpperCase();
       const badgeClass = ['FLAC', 'MP3', 'WAV'].includes(fmt) ? fmt.toLowerCase() : 'other';
       const isLossless = ['FLAC', 'WAV', 'ALAC', 'APE'].includes(fmt);
@@ -129,32 +147,26 @@ function renderTracks(tracks) {
       actionHtml = `<span class="format-badge ${badgeClass}">${fmt}</span>${qualityText ? `<span class="quality-text">${qualityText}</span>` : ''}`;
       actionClass = 'track-actions quality';
     } else {
-      actionHtml = downloadBtn;
+      const isCached = hasCachedResults(trackQuery(track));
+      actionHtml = `
+        <button class="track-download-btn${isCached ? ' cached' : ''}" data-action="download" title="${isCached ? 'Résultats en cache' : 'Télécharger via Soulseek'}">
+          ${icon(ICONS.download, 16)}
+        </button>`;
     }
-    
-    // Source badge label with identify icon for unknown
-    const sourceLabels = {
-      spotify: '●  Spotify',
-      soundcloud: '●  SoundCloud',
-      local: '●  Local',
-      unknown: '●  Inconnu'
-    };
-    const sourceLabel = sourceLabels[track.source] || '●  Inconnu';
-    
+
+    const sourceLabel = SOURCE_LABELS[track.source] || SOURCE_LABELS.unknown;
+
     // Add identify icon for unknown tracks
     const identifyIcon = track.source === 'unknown' ? `
-      <span class="identify-icon" onclick="openIdentifyModal('${escapeJs(track.id)}', '${escapeJs(track.title)}', '${escapeJs(track.artist)}')" title="Identifier ce morceau">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-        </svg>
+      <span class="identify-icon" data-action="identify" title="Identifier ce morceau">
+        ${icon(ICONS.search, 12)}
       </span>` : '';
-    
+
     return `
-    <div class="track-row" data-track-id="${track.id}">
+    <div class="track-row" data-track-id="${escapeHtml(track.id)}">
       <span class="track-num">${i + 1}</span>
       <div class="track-title-cell">
-        <img class="track-thumb" src="${track.artwork || ''}" alt="" 
-          onerror="this.style.display='none'">
+        <img class="track-thumb" src="${escapeHtml(track.artwork)}" alt="">
         <div class="track-info">
           <span class="track-title" title="${escapeHtml(track.title)}">${escapeHtml(track.title)}</span>
           <span class="track-artist" title="${escapeHtml(track.artist)}">${escapeHtml(track.artist)}</span>
@@ -162,7 +174,7 @@ function renderTracks(tracks) {
       </div>
       <span class="track-album" title="${escapeHtml(track.album || '')}">${escapeHtml(track.album || '—')}</span>
       <span class="track-source">
-        <span class="source-badge ${track.source}">${sourceLabel}</span>${identifyIcon}
+        <span class="source-badge ${escapeHtml(track.source)}">${sourceLabel}</span>${identifyIcon}
       </span>
       <span class="track-duration">${formatDuration(track.duration)}</span>
       <span class="${actionClass}">${actionHtml}</span>
@@ -171,6 +183,15 @@ function renderTracks(tracks) {
 
   trackList.innerHTML = html;
 }
+
+trackList.addEventListener('click', (e) => {
+  const actionEl = e.target.closest('[data-action]');
+  if (!actionEl) return;
+  const track = renderedTracks.get(actionEl.closest('.track-row')?.dataset.trackId);
+  if (!track) return;
+  if (actionEl.dataset.action === 'download') openSlskdSearch(track);
+  if (actionEl.dataset.action === 'identify') openIdentifyModal(track);
+});
 
 // ─── Playlists View ─────────────────────────────────────────
 const playlistGrid = $('#playlist-grid');
@@ -186,6 +207,11 @@ $('#btn-add-playlist').addEventListener('click', () => {
   playlistUrlInput.focus();
 });
 
+function reloadLibraryViews() {
+  loadPlaylists();
+  loadTracks(); // also refreshes the stats
+}
+
 async function handleRefresh(btn) {
   btn.disabled = true;
   const originalHTML = btn.innerHTML;
@@ -195,9 +221,7 @@ async function handleRefresh(btn) {
     const result = await api.refreshLibrary();
     const localMsg = result.localTracks > 0 ? `, ${result.localTracks} locales` : '';
     showToast(`Bibliothèque synchronisée (${result.totalTracks} pistes${localMsg})`, 'success');
-    loadPlaylists();
-    loadTracks();
-    updateStats();
+    reloadLibraryViews();
   } catch (err) {
     showToast(`Erreur: ${err.message}`, 'error');
   } finally {
@@ -206,8 +230,8 @@ async function handleRefresh(btn) {
   }
 }
 
-$('#btn-refresh-playlists').addEventListener('click', () => handleRefresh($('#btn-refresh-playlists')));
-$('#btn-refresh-tracks').addEventListener('click', () => handleRefresh($('#btn-refresh-tracks')));
+$('#btn-refresh-playlists').addEventListener('click', (e) => handleRefresh(e.currentTarget));
+$('#btn-refresh-tracks').addEventListener('click', (e) => handleRefresh(e.currentTarget));
 
 $('#btn-cancel-add').addEventListener('click', closeAddModal);
 
@@ -242,9 +266,7 @@ async function addPlaylist() {
     const playlist = await api.addPlaylist(url);
     closeAddModal();
     showToast(`Playlist "${playlist.name}" ajoutée (${playlist.tracks.length} pistes)`, 'success');
-    loadPlaylists();
-    loadTracks();
-    updateStats();
+    reloadLibraryViews();
   } catch (err) {
     addError.textContent = err.message;
     addError.style.display = 'block';
@@ -275,21 +297,17 @@ function renderPlaylists(playlists) {
   playlistsEmpty.style.display = 'none';
 
   const html = playlists.map(p => `
-    <div class="playlist-card" data-id="${p.id}">
+    <div class="playlist-card" data-id="${escapeHtml(p.id)}">
       <div class="playlist-cover">
-        <img src="${p.artwork || ''}" alt="${escapeHtml(p.name)}" 
-          onerror="this.parentElement.style.background='var(--bg-tertiary)'">
-        <span class="playlist-source-tag ${p.source}">${p.source}</span>
+        <img src="${escapeHtml(p.artwork)}" alt="${escapeHtml(p.name)}">
+        <span class="playlist-source-tag ${escapeHtml(p.source)}">${escapeHtml(p.source)}</span>
       </div>
       <div class="playlist-info">
         <div class="playlist-name" title="${escapeHtml(p.name)}">${escapeHtml(p.name)}</div>
         <div class="playlist-meta">
           <span class="playlist-track-count">${p.tracks.length} pistes</span>
-          <button class="playlist-remove" title="Supprimer" onclick="removePlaylist('${p.id}')">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/>
-              <path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/>
-            </svg>
+          <button class="playlist-remove" title="Supprimer">
+            ${icon(ICONS.trash, 16)}
           </button>
         </div>
       </div>
@@ -299,19 +317,21 @@ function renderPlaylists(playlists) {
   playlistGrid.innerHTML = html;
 }
 
-// Expose to onclick
-window.removePlaylist = async function(id) {
+playlistGrid.addEventListener('click', (e) => {
+  if (!e.target.closest('.playlist-remove')) return;
+  removePlaylist(e.target.closest('.playlist-card').dataset.id);
+});
+
+async function removePlaylist(id) {
   if (!confirm('Supprimer cette playlist ?')) return;
   try {
     await api.removePlaylist(id);
     showToast('Playlist supprimée', 'success');
-    loadPlaylists();
-    loadTracks();
-    updateStats();
+    reloadLibraryViews();
   } catch (err) {
     showToast(err.message, 'error');
   }
-};
+}
 
 // ─── Settings View ──────────────────────────────────────────
 async function loadSettings() {
@@ -322,40 +342,39 @@ async function loadSettings() {
   $('#soulseek-password').value = settings.soulseek?.password || '';
   $('#soulseek-library-path').value = settings.soulseek?.libraryPath || '';
   
-  // Check platform support first
-  await checkPlatformSupport();
-  
-  // Check slskd binary status
-  checkSlskdBinary();
-  
+  const platformInfo = await api.slskd.checkPlatform();
+  if (platformInfo.supported) {
+    checkSlskdBinary();
+  } else {
+    showUnsupportedPlatform(platformInfo);
+  }
+
   // Refresh slskd status UI when entering settings
   refreshSlskdStatusUI();
 }
 
-// Check if platform is supported
-async function checkPlatformSupport() {
-  const platformInfo = await api.slskd.checkPlatform();
+function showUnsupportedPlatform(platformInfo) {
+  $('#slskd-binary-status').classList.add('missing');
+  $('#slskd-binary-text').textContent = 'Non disponible sur cette plateforme';
+  $('#btn-download-slskd').style.display = 'none';
+
   const slskdSection = document.querySelector('.settings-group:has(#soulseek-username)');
-  
-  if (!platformInfo.supported) {
-    // Show unsupported platform warning
-    const warningEl = document.createElement('div');
-    warningEl.className = 'platform-warning';
-    warningEl.innerHTML = `
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
-        <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
-      </svg>
-      <span>Soulseek n'est disponible que sur Windows pour le moment. Plateforme détectée: ${platformInfo.platform}</span>
-    `;
-    slskdSection?.insertBefore(warningEl, slskdSection.firstChild.nextSibling);
-    
-    // Disable all Soulseek inputs
-    $('#soulseek-username').disabled = true;
-    $('#soulseek-password').disabled = true;
-    $('#btn-browse-library').disabled = true;
-    $('#btn-slskd-toggle').disabled = true;
-    $('#btn-download-slskd').disabled = true;
+  if (slskdSection?.querySelector('.platform-warning')) return; // already shown
+
+  const warningEl = document.createElement('div');
+  warningEl.className = 'platform-warning';
+  warningEl.innerHTML = `
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+      <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+    </svg>
+    <span>Soulseek n'est disponible que sur Windows pour le moment. Plateforme détectée: ${escapeHtml(platformInfo.platform)}</span>
+  `;
+  slskdSection?.insertBefore(warningEl, slskdSection.firstChild.nextSibling);
+
+  // Disable all Soulseek inputs
+  for (const sel of ['#soulseek-username', '#soulseek-password', '#btn-browse-library', '#btn-slskd-toggle', '#btn-download-slskd']) {
+    $(sel).disabled = true;
   }
 }
 
@@ -373,30 +392,15 @@ async function checkSlskdBinary() {
   const statusEl = $('#slskd-binary-status');
   const textEl = $('#slskd-binary-text');
   const downloadBtn = $('#btn-download-slskd');
-  
-  // Check platform first
-  const platformInfo = await api.slskd.checkPlatform();
-  if (!platformInfo.supported) {
-    statusEl.classList.add('missing');
-    textEl.textContent = 'Non disponible sur cette plateforme';
-    downloadBtn.style.display = 'none';
-    return;
-  }
-  
+
   const versionInfo = await api.slskd.getVersion();
-  const isInstalled = await api.slskd.checkBinary();
-  
-  if (isInstalled) {
-    statusEl.classList.remove('missing');
-    statusEl.classList.add('ready');
-    textEl.textContent = `✓ slskd v${versionInfo?.version || '?'} installé`;
-    downloadBtn.style.display = 'none';
-  } else {
-    statusEl.classList.remove('ready');
-    statusEl.classList.add('missing');
-    textEl.textContent = `slskd v${versionInfo?.version || '0.21.4'} non installé`;
-    downloadBtn.style.display = 'inline-flex';
-  }
+  const version = versionInfo?.version || '?';
+  const isInstalled = !!versionInfo?.installed;
+
+  statusEl.classList.toggle('ready', isInstalled);
+  statusEl.classList.toggle('missing', !isInstalled);
+  textEl.textContent = isInstalled ? `✓ slskd v${version} installé` : `slskd v${version} non installé`;
+  downloadBtn.style.display = isInstalled ? 'none' : 'inline-flex';
 }
 
 // Download slskd binary
@@ -655,17 +659,18 @@ function formatDuration(ms) {
   return `${minutes}:${seconds.toString().padStart(2, '0')}`;
 }
 
+const HTML_ESCAPES = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+
+/** Escape a value for use in HTML text and quoted attributes. */
 function escapeHtml(str) {
-  if (!str) return '';
-  const div = document.createElement('div');
-  div.textContent = str;
-  return div.innerHTML;
+  if (str == null) return '';
+  return String(str).replace(/[&<>"']/g, (c) => HTML_ESCAPES[c]);
 }
 
-function escapeJs(str) {
-  if (!str) return '';
-  return str.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '\\"');
-}
+// Hide images that fail to load (artwork URLs can expire or be blocked by CSP)
+document.addEventListener('error', (e) => {
+  if (e.target instanceof HTMLImageElement) e.target.style.display = 'none';
+}, true);
 
 // ─── Keyboard shortcuts ─────────────────────────────────────
 document.addEventListener('keydown', (e) => {
@@ -679,6 +684,7 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
     closeAddModal();
     closeSlskdModal();
+    closeIdentifyModal();
   }
 });
 
@@ -690,9 +696,9 @@ const slskdNoResults = $('#slskd-no-results');
 const slskdSearchQuery = $('#slskd-search-query');
 const slskdSearchStatus = $('#slskd-search-status');
 
-let currentSearchId = null;
 let searchPollInterval = null;
-let currentSearchQuery = null; // Track current query for background polling
+let foregroundSearch = null; // { query, pollFn } of the search shown in the modal
+let slskdResults = []; // results currently rendered in the modal
 
 // ─── Search Cache ───────────────────────────────────────────
 const SEARCH_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
@@ -772,7 +778,7 @@ async function startAutoSearch() {
   const tracksToSearch = tracks.filter(t => {
     if (t.format) return false; // Has local file
     if (t.source !== 'spotify' && t.source !== 'soundcloud') return false;
-    const query = `${t.artist} ${t.title}`.trim();
+    const query = trackQuery(t);
     if (hasCachedResults(query)) return false;
     // Skip queries already in flight from a previous run
     if (autoSearchInFlight.has(normalizeQuery(query))) return false;
@@ -785,11 +791,7 @@ async function startAutoSearch() {
   }
   
   autoSearchActive = true;
-  autoSearchQueue = tracksToSearch.map(t => ({
-    artist: t.artist,
-    title: t.title,
-    query: `${t.artist} ${t.title}`.trim()
-  }));
+  autoSearchQueue = tracksToSearch.map(t => ({ query: trackQuery(t) }));
   autoSearchRunning = autoSearchInFlight.size; // Count already in-flight
   autoSearchCompleted = 0;
   autoSearchTotal = autoSearchQueue.length + autoSearchInFlight.size;
@@ -895,39 +897,35 @@ async function pollAutoSearch(searchId, query) {
   });
 }
 
-window.openSlskdSearch = async function(artist, title, trackId) {
+async function openSlskdSearch(track) {
   const status = await api.slskd.getStatus();
   if (!status.running) {
     showToast('Démarrez Soulseek dans les paramètres', 'error');
     return;
   }
-  
+
   // Store the trackId for linking when download starts
-  currentSearchTrackId = trackId || null;
-  
-  const query = `${artist} ${title}`.trim();
+  currentSearchTrackId = track.id;
+
+  const query = trackQuery(track);
   slskdSearchQuery.value = query;
   slskdModal.style.display = 'flex';
-  
+
   executeSlskdSearch(query);
-};
+}
 
 const slskdSearchBtn = $('#slskd-search-btn');
 let isSearching = false;
 
 // Event listeners for manual search
-slskdSearchBtn.addEventListener('click', () => {
-  if (isSearching) return;
+function submitManualSearch() {
   const query = slskdSearchQuery.value.trim();
   if (query) executeSlskdSearch(query);
-});
+}
 
+slskdSearchBtn.addEventListener('click', submitManualSearch);
 slskdSearchQuery.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') {
-    if (isSearching) return;
-    const query = slskdSearchQuery.value.trim();
-    if (query) executeSlskdSearch(query);
-  }
+  if (e.key === 'Enter') submitManualSearch();
 });
 
 async function executeSlskdSearch(query) {
@@ -955,7 +953,6 @@ async function executeSlskdSearch(query) {
   
   isSearching = true;
   slskdSearchBtn.disabled = true;
-  currentSearchQuery = query;
   
   slskdSearchStatus.textContent = 'Recherche...';
   slskdLoading.style.display = 'flex';
@@ -965,12 +962,26 @@ async function executeSlskdSearch(query) {
   
   try {
     const { id } = await api.slskd.search(query);
-    currentSearchId = id;
     let lastCount = 0;
     let tick = 0;
     let hasFiles = false;
-    const searchQuery = query; // Capture for closure
-    
+
+    // Stop whichever interval (foreground or background) is polling this search
+    const stopPolling = (isBackground) => {
+      const bgKey = normalizeQuery(query);
+      const bg = backgroundSearches.get(bgKey);
+      if (bg) {
+        clearInterval(bg.interval);
+        backgroundSearches.delete(bgKey);
+      }
+      if (!isBackground && searchPollInterval) {
+        clearInterval(searchPollInterval);
+        searchPollInterval = null;
+        isSearching = false;
+        slskdSearchBtn.disabled = false;
+      }
+    };
+
     const pollFn = async (isBackground = false) => {
       try {
         tick++;
@@ -992,54 +1003,30 @@ async function executeSlskdSearch(query) {
           }
           // Cache intermediate results
           if (data.results.length > 0) {
-            setCachedResults(searchQuery, data.results);
+            setCachedResults(query, data.results);
           }
         }
         
         if (data.isComplete) {
-          // Clean up
-          const bgKey = normalizeQuery(searchQuery);
-          const bg = backgroundSearches.get(bgKey);
-          if (bg) {
-            clearInterval(bg.interval);
-            backgroundSearches.delete(bgKey);
-          }
-          if (!isBackground && searchPollInterval) {
-            clearInterval(searchPollInterval);
-            searchPollInterval = null;
-            isSearching = false;
-            slskdSearchBtn.disabled = false;
-          }
+          stopPolling(isBackground);
           // Cache final results
           const final = await api.slskd.getSearchResults(id, true);
           if (final.results.length > 0) {
-            setCachedResults(searchQuery, final.results);
+            setCachedResults(query, final.results);
           }
           if (!isBackground) {
             slskdSearchStatus.textContent = final.results.length > 0 ? `${final.results.length} résultats` : 'Aucun résultat';
             renderSlskdResults(final.results, false);
           }
         }
-      } catch (err) {
-        // Clean up on error
-        const bgKey = normalizeQuery(searchQuery);
-        const bg = backgroundSearches.get(bgKey);
-        if (bg) {
-          clearInterval(bg.interval);
-          backgroundSearches.delete(bgKey);
-        }
-        if (!isBackground && searchPollInterval) {
-          clearInterval(searchPollInterval);
-          searchPollInterval = null;
-          isSearching = false;
-          slskdSearchBtn.disabled = false;
-        }
+      } catch {
+        stopPolling(isBackground);
       }
     };
-    
+
     searchPollInterval = setInterval(() => pollFn(false), 500);
-    // Store reference for background conversion
-    window._currentSearchPoll = { id, query: searchQuery, pollFn, tick: () => tick, hasFiles: () => hasFiles };
+    // Kept so closing the modal can move the polling to the background
+    foregroundSearch = { query, pollFn };
     
   } catch (err) {
     isSearching = false;
@@ -1062,10 +1049,11 @@ function renderSlskdResults(results, searching = false) {
   }
   
   slskdNoResults.style.display = 'none';
-  
-  const html = results.slice(0, 100).map(r => {
+
+  slskdResults = results.slice(0, 100);
+  const html = slskdResults.map((r, i) => {
     const name = r.filename.split(/[\\\/]/).pop();
-    const ext = r.extension.toUpperCase();
+    const ext = escapeHtml(r.extension.toUpperCase());
     const cls = ['flac', 'mp3', 'wav'].includes(r.extension) ? r.extension : 'other';
     const quality = [r.bitRate && `${r.bitRate}kbps`, r.sampleRate && `${(r.sampleRate/1000).toFixed(1)}kHz`].filter(Boolean).join(' · ') || '—';
     
@@ -1075,16 +1063,19 @@ function renderSlskdResults(results, searching = false) {
       <span class="result-format"><span class="format-badge ${cls}">${ext}</span></span>
       <span class="result-quality">${quality}</span>
       <span class="result-size">${formatSize(r.size)}</span>
-      <button class="result-download-btn" onclick="downloadFromSlskd('${escapeJs(r.username)}','${escapeJs(r.filename)}',${r.size},this)">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-      </button>
+      <button class="result-download-btn" data-index="${i}">${icon(ICONS.download, 14)}</button>
     </div>`;
   }).join('');
   
   slskdResultsList.innerHTML = html;
 }
 
-window.downloadFromSlskd = async function(username, filename, size, btn) {
+slskdResultsList.addEventListener('click', (e) => {
+  const btn = e.target.closest('.result-download-btn');
+  if (btn) downloadFromSlskd(slskdResults[btn.dataset.index], btn);
+});
+
+async function downloadFromSlskd({ username, filename, size }, btn) {
   btn.disabled = true;
   btn.innerHTML = '<svg class="spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/></svg>';
   
@@ -1097,22 +1088,22 @@ window.downloadFromSlskd = async function(username, filename, size, btn) {
     
     await api.slskd.download(username, filename, size);
     startDownloadPolling();
-    btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>';
+    btn.innerHTML = icon(ICONS.check, 14);
     btn.style.background = btn.style.borderColor = 'var(--success)';
   } catch (err) {
     btn.disabled = false;
-    btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+    btn.innerHTML = icon(ICONS.close, 14);
     btn.style.background = btn.style.borderColor = 'var(--danger)';
     showToast(`Erreur: ${err.message}`, 'error');
   }
-};
+}
 
 function closeSlskdModal() {
   slskdModal.style.display = 'none';
   
   // Move current search to background instead of stopping it
-  if (searchPollInterval && window._currentSearchPoll) {
-    const { id, query, pollFn } = window._currentSearchPoll;
+  if (searchPollInterval && foregroundSearch) {
+    const { query, pollFn } = foregroundSearch;
     const key = normalizeQuery(query);
     
     // Stop foreground interval
@@ -1121,14 +1112,12 @@ function closeSlskdModal() {
     
     // Start background interval
     const bgInterval = setInterval(() => pollFn(true), 500);
-    backgroundSearches.set(key, { searchId: id, interval: bgInterval });
-    
-    window._currentSearchPoll = null;
+    backgroundSearches.set(key, { interval: bgInterval });
+
+    foregroundSearch = null;
   }
-  
-  currentSearchId = null;
+
   currentSearchTrackId = null;
-  currentSearchQuery = null;
   // Reset search state to allow new searches
   isSearching = false;
   slskdSearchBtn.disabled = false;
@@ -1143,14 +1132,16 @@ const identifyResultsList = $('#identify-results-list');
 const identifySourceTitle = $('#identify-source-title');
 let identifySourceTrackId = null; // The unknown track to identify
 
-window.openIdentifyModal = function(trackId, title, artist) {
-  identifySourceTrackId = trackId;
-  identifySourceTitle.textContent = `${title} - ${artist}`;
+const IDENTIFY_HINT = '<p class="identify-hint">Recherchez un morceau de votre bibliothèque pour l\'associer à ce fichier.</p>';
+
+function openIdentifyModal(track) {
+  identifySourceTrackId = track.id;
+  identifySourceTitle.textContent = `${track.title} - ${track.artist}`;
   identifySearchInput.value = '';
-  identifyResultsList.innerHTML = '<p class="identify-hint">Recherchez un morceau de votre bibliothèque pour l\'associer à ce fichier.</p>';
+  identifyResultsList.innerHTML = IDENTIFY_HINT;
   identifyModal.style.display = 'flex';
   identifySearchInput.focus();
-};
+}
 
 function closeIdentifyModal() {
   identifyModal.style.display = 'none';
@@ -1162,7 +1153,7 @@ $('#btn-close-identify-modal').addEventListener('click', closeIdentifyModal);
 identifySearchInput.addEventListener('input', async (e) => {
   const query = e.target.value.trim().toLowerCase();
   if (query.length < 2) {
-    identifyResultsList.innerHTML = '<p class="identify-hint">Recherchez un morceau de votre bibliothèque pour l\'associer à ce fichier.</p>';
+    identifyResultsList.innerHTML = IDENTIFY_HINT;
     return;
   }
   
@@ -1183,49 +1174,46 @@ identifySearchInput.addEventListener('input', async (e) => {
   }
   
   identifyResultsList.innerHTML = results.map(t => `
-    <div class="identify-result-row" data-target-id="${escapeJs(t.id)}" onclick="linkToTrack('${escapeJs(t.id)}', this)">
-      <img class="identify-result-thumb" src="${t.artwork || ''}" alt="" onerror="this.style.display='none'">
+    <div class="identify-result-row" data-target-id="${escapeHtml(t.id)}">
+      <img class="identify-result-thumb" src="${escapeHtml(t.artwork)}" alt="">
       <div class="identify-result-info">
         <span class="identify-result-title">${escapeHtml(t.title)}</span>
         <span class="identify-result-artist">${escapeHtml(t.artist)}</span>
       </div>
-      <span class="source-badge ${t.source}">${t.source === 'spotify' ? '● Spotify' : '● SoundCloud'}</span>
+      <span class="source-badge ${t.source}">${SOURCE_LABELS[t.source]}</span>
       <span class="linking-spinner"></span>
     </div>
   `).join('');
 });
 
-window.linkToTrack = async function(targetTrackId, element) {
+identifyResultsList.addEventListener('click', (e) => {
+  const row = e.target.closest('.identify-result-row');
+  if (row) linkToTrack(row);
+});
+
+async function linkToTrack(row) {
   if (!identifySourceTrackId) return;
-  
-  // Find the clicked row and show loading
-  const row = element?.closest('.identify-result-row') || document.querySelector(`[data-target-id="${targetTrackId}"]`);
-  if (row) {
-    row.classList.add('linking');
-    row.style.pointerEvents = 'none';
-  }
-  
+
+  row.classList.add('linking');
+  row.style.pointerEvents = 'none';
+
+  let error;
   try {
-    const result = await api.linkUnknownToTrack(identifySourceTrackId, targetTrackId);
+    const result = await api.linkUnknownToTrack(identifySourceTrackId, row.dataset.targetId);
     if (result.success) {
       showToast('Morceau identifié et lié avec succès', 'success');
       closeIdentifyModal();
       loadTracks();
-    } else {
-      if (row) {
-        row.classList.remove('linking');
-        row.style.pointerEvents = '';
-      }
-      showToast(`Erreur: ${result.error}`, 'error');
+      return;
     }
+    error = result.error;
   } catch (err) {
-    if (row) {
-      row.classList.remove('linking');
-      row.style.pointerEvents = '';
-    }
-    showToast(`Erreur: ${err.message}`, 'error');
+    error = err.message;
   }
-};
+  row.classList.remove('linking');
+  row.style.pointerEvents = '';
+  showToast(`Erreur: ${error}`, 'error');
+}
 
 function formatSize(bytes) {
   if (!bytes) return '—';
@@ -1240,6 +1228,7 @@ const downloadsEmpty = $('#downloads-empty');
 const downloadsSummary = $('#downloads-summary');
 const navDownloadBadge = $('#nav-download-badge');
 let downloadPollInterval = null;
+let renderedTransfers = []; // transfers currently shown, indexed by row
 
 function startDownloadPolling() {
   if (downloadPollInterval) return;
@@ -1357,9 +1346,9 @@ function renderDownloadsView(transfers) {
   }
 
   downloadsEmpty.style.display = 'none';
-  const sorted = [...active, ...failed.reverse(), ...completed.reverse()];
+  renderedTransfers = [...active, ...failed.reverse(), ...completed.reverse()];
 
-  downloadViewList.innerHTML = sorted.map(t => {
+  downloadViewList.innerHTML = renderedTransfers.map((t, i) => {
     const name = t.filename.split(/[\\/]/).pop() || t.filename;
     const stateInfo = getStateDisplay(t.state);
     const pct = Math.round(t.percentComplete);
@@ -1370,23 +1359,17 @@ function renderDownloadsView(transfers) {
       ? `${formatSize(t.bytesTransferred)} / ${formatSize(t.size)}`
       : formatSize(t.size);
 
-    return `<div class="dl-row ${stateInfo.cls}">
+    return `<div class="dl-row ${stateInfo.cls}" data-index="${i}">
       <span class="dl-col-name" title="${escapeHtml(t.filename)}">${escapeHtml(name)}</span>
       <span class="dl-col-user">${escapeHtml(t.username)}</span>
       <span class="dl-col-size">${sizeText}</span>
       <span class="dl-col-progress">
         ${isActive ? `<span class="dl-speed">${speed}</span><div class="dl-progress-bar"><div class="dl-progress-fill" style="width: ${pct}%"></div></div><span class="dl-pct">${pct}%</span>` : ''}
       </span>
-      <span class="dl-col-state ${stateInfo.cls}">${stateInfo.label}</span>
+      <span class="dl-col-state ${stateInfo.cls}">${escapeHtml(stateInfo.label)}</span>
       <span class="dl-col-actions">
-        ${isActive ? `<button class="dl-action-btn dl-cancel" title="Annuler" onclick="cancelDownload('${escapeJs(t.username)}','${escapeJs(t.id)}',false)">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-        </button>` : ''}
-        ${isFailed ? `<button class="dl-action-btn dl-retry" title="Réessayer" onclick="retryDownload('${escapeJs(t.username)}','${escapeJs(t.id)}','${escapeJs(t.filename)}',${t.size})">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
-        </button><button class="dl-action-btn dl-cancel" title="Supprimer" onclick="cancelDownload('${escapeJs(t.username)}','${escapeJs(t.id)}',true)">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-        </button>` : ''}
+        ${isActive ? `<button class="dl-action-btn dl-cancel" title="Annuler" data-action="cancel">${icon(ICONS.close, 14)}</button>` : ''}
+        ${isFailed ? `<button class="dl-action-btn dl-retry" title="Réessayer" data-action="retry">${icon(ICONS.retry, 14)}</button><button class="dl-action-btn dl-cancel" title="Supprimer" data-action="remove">${icon(ICONS.close, 14)}</button>` : ''}
       </span>
     </div>`;
   }).join('');
@@ -1424,7 +1407,16 @@ function formatSpeed(bytesPerSec) {
   return `${(bytesPerSec / (1024 * 1024)).toFixed(1)} MB/s`;
 }
 
-window.cancelDownload = async function(username, id, remove) {
+downloadViewList.addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-action]');
+  const t = btn && renderedTransfers[btn.closest('.dl-row').dataset.index];
+  if (!t) return;
+  if (btn.dataset.action === 'cancel') cancelDownload(t, false);
+  if (btn.dataset.action === 'remove') cancelDownload(t, true);
+  if (btn.dataset.action === 'retry') retryDownload(t);
+});
+
+async function cancelDownload({ username, id }, remove) {
   try {
     await api.slskd.cancelDownload(username, id, remove);
     pollDownloads();
@@ -1432,9 +1424,9 @@ window.cancelDownload = async function(username, id, remove) {
     console.error('cancelDownload error', err);
     showToast(`Erreur: ${err.message}`, 'error');
   }
-};
+}
 
-window.retryDownload = async function(username, id, filename, size) {
+async function retryDownload({ username, id, filename, size }) {
   try {
     await api.slskd.retryDownload(username, id, filename, size);
     showToast('Téléchargement relancé');
@@ -1442,9 +1434,9 @@ window.retryDownload = async function(username, id, filename, size) {
   } catch (err) {
     showToast(`Erreur: ${err.message}`, 'error');
   }
-};
+}
 
-window.clearCompleted = async function() {
+$('#dl-clear-btn').addEventListener('click', async () => {
   try {
     const data = await api.slskd.getDownloads();
     const transfers = flattenTransfers(data);
@@ -1454,7 +1446,7 @@ window.clearCompleted = async function() {
   } catch (err) {
     showToast(`Erreur: ${err.message}`, 'error');
   }
-};
+});
 
 // ─── External links ─────────────────────────────────────────
 const spotifyDevLink = $('#link-spotify-dev');

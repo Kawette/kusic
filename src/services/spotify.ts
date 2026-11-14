@@ -76,11 +76,9 @@ export class SpotifyService {
 
   private async getAllPlaylistTracks(playlistId: string): Promise<Track[]> {
     const tracks: Track[] = [];
-    let offset = 0;
     const limit = 100;
-    let hasMore = true;
 
-    while (hasMore) {
+    for (let offset = 0; ; offset += limit) {
       const response = await axios.get(
         `https://api.spotify.com/v1/playlists/${playlistId}/tracks`,
         {
@@ -115,10 +113,7 @@ export class SpotifyService {
         });
       }
 
-      hasMore = !!response.data.next;
-      offset += limit;
+      if (!response.data.next) return tracks;
     }
-
-    return tracks;
   }
 }

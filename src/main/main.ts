@@ -9,7 +9,7 @@ import * as taglib from "node-taglib-sharp";
 import Store from "electron-store";
 import { SpotifyService } from "../services/spotify.js";
 import { SoundCloudService } from "../services/soundcloud.js";
-import { SlskdManager } from "../services/slskd/index.js";
+import { SlskdManager, SlskdAPI } from "../services/slskd/index.js";
 import type { Playlist, Track, AppSettings, TrackFilters } from "../types.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -205,15 +205,12 @@ async function parseAudioFile(filePath: string): Promise<Track | null> {
       linkedTrackId = kusicMatch[1];
     }
 
-    // Determine source based on linkedTrackId
-    let source: "local" | "unknown" = linkedTrackId ? "local" : "unknown";
-
     // Use hash of full path to ensure unique IDs for files in same directory
     const pathHash = crypto.createHash("md5").update(filePath).digest("hex");
 
     return {
       id: `local-${pathHash}`,
-      source,
+      source: linkedTrackId ? "local" : "unknown",
       title,
       artist,
       album,
@@ -231,6 +228,94 @@ async function parseAudioFile(filePath: string): Promise<Track | null> {
     console.error(`[Kusic] Failed to parse ${filePath}:`, err);
     return null;
   }
+}
+
+// ─── Track Index ───────────────────────────────────────────────
+
+/** Copy the local file quality info of `local` onto a playlist track. */
+function withLocalFile(track: Track, local: Track): Track {
+  const { format, bitRate, sampleRate, bitDepth, filePath } = local;
+  return { ...track, format, bitRate, sampleRate, bitDepth, filePath };
+}
+
+/** Strip any stale local file data from a playlist track. */
+function withoutLocalFile(track: Track): Track {
+  const { format, bitRate, sampleRate, bitDepth, filePath, linkedTrackId, ...clean } = track;
+  return clean;
+}
+
+/**
+ * Rebuild the unified track list from the playlists and the files found in
+ * the library: playlist tracks get the quality info of their linked file,
+ * untagged files are "unknown", and files linked to a track that no longer
+ * belongs to any playlist become plain "local" tracks.
+ */
+async function rebuildTrackIndex(playlists: Playlist[]) {
+  const localTracks = await scanLocalFiles();
+
+  const linkedLocalFiles = new Map<string, Track>();
+  const orphanedLocalTracks: Track[] = [];
+  for (const localTrack of localTracks) {
+    if (localTrack.linkedTrackId) {
+      linkedLocalFiles.set(localTrack.linkedTrackId, localTrack);
+    } else {
+      orphanedLocalTracks.push(localTrack);
+    }
+  }
+
+  console.log(
+    `[Kusic] Found ${linkedLocalFiles.size} linked files, ${orphanedLocalTracks.length} orphaned`,
+  );
+
+  const allTracks: Track[] = [];
+  const matchedLinkedIds = new Set<string>();
+
+  for (const pl of playlists) {
+    for (const track of pl.tracks) {
+      const linkedLocal = linkedLocalFiles.get(track.id);
+      if (linkedLocal) {
+        matchedLinkedIds.add(track.id);
+        allTracks.push(withLocalFile(track, linkedLocal));
+      } else {
+        allTracks.push(withoutLocalFile(track));
+      }
+    }
+  }
+
+  allTracks.push(...orphanedLocalTracks);
+
+  for (const [linkedId, localTrack] of linkedLocalFiles) {
+    if (!matchedLinkedIds.has(linkedId)) {
+      allTracks.push({ ...localTrack, source: "local", linkedTrackId: undefined });
+    }
+  }
+
+  store.set("tracks", allTracks);
+  return { totalTracks: allTracks.length, localTracks: localTracks.length };
+}
+
+function findPlaylistTrack(trackId: string): Track | undefined {
+  for (const pl of store.get("playlists")) {
+    const track = pl.tracks.find((t) => t.id === trackId);
+    if (track) return track;
+  }
+  return undefined;
+}
+
+async function fetchPlaylist(url: string): Promise<Playlist> {
+  if (url.includes("spotify.com")) {
+    const { clientId, clientSecret } = store.get("spotify");
+    if (!clientId || !clientSecret) {
+      throw new Error(
+        "Configurez vos identifiants Spotify dans les paramètres",
+      );
+    }
+    return new SpotifyService(clientId, clientSecret).getPlaylist(url);
+  }
+  if (url.includes("soundcloud.com")) {
+    return new SoundCloudService().getPlaylist(url);
+  }
+  throw new Error("URL non supportée. Utilisez une URL Spotify ou SoundCloud.");
 }
 
 // ─── Metadata Writing Functions ────────────────────────────────
@@ -307,94 +392,26 @@ ipcMain.handle("save-settings", (_, settings: Partial<AppSettings>) => {
 ipcMain.handle("get-playlists", (): Playlist[] => store.get("playlists"));
 
 ipcMain.handle("add-playlist", async (_, url: string): Promise<Playlist> => {
-  let playlistData: Playlist;
-
-  if (url.includes("spotify.com")) {
-    const spotifyConfig = store.get("spotify");
-    if (!spotifyConfig.clientId || !spotifyConfig.clientSecret) {
-      throw new Error(
-        "Configurez vos identifiants Spotify dans les paramètres",
-      );
-    }
-    const spotify = new SpotifyService(
-      spotifyConfig.clientId,
-      spotifyConfig.clientSecret,
-    );
-    playlistData = await spotify.getPlaylist(url);
-  } else if (url.includes("soundcloud.com")) {
-    const sc = new SoundCloudService();
-    playlistData = await sc.getPlaylist(url);
-  } else {
-    throw new Error(
-      "URL non supportée. Utilisez une URL Spotify ou SoundCloud.",
-    );
-  }
-
+  const playlistData = await fetchPlaylist(url);
   const playlists = store.get("playlists");
 
-  if (playlists.find((p) => p.url === playlistData.url)) {
+  if (playlists.some((p) => p.url === playlistData.url)) {
     throw new Error("Cette playlist est déjà dans votre bibliothèque");
   }
 
   playlists.push(playlistData);
   store.set("playlists", playlists);
-
-  // Scan local files to check for linked tracks
-  const localTracks = await scanLocalFiles();
-  const linkedLocalFiles = new Map<string, Track>();
-  for (const localTrack of localTracks) {
-    if (localTrack.linkedTrackId) {
-      linkedLocalFiles.set(localTrack.linkedTrackId, localTrack);
-    }
-  }
-
-  // Merge tracks into unified list with local file info
-  const allTracks = store.get("tracks");
-  for (const track of playlistData.tracks) {
-    const linkedLocal = linkedLocalFiles.get(track.id);
-    if (linkedLocal) {
-      allTracks.push({
-        ...track,
-        format: linkedLocal.format,
-        bitRate: linkedLocal.bitRate,
-        sampleRate: linkedLocal.sampleRate,
-        bitDepth: linkedLocal.bitDepth,
-        filePath: linkedLocal.filePath,
-      });
-    } else {
-      allTracks.push(track);
-    }
-  }
-  store.set("tracks", allTracks);
+  await rebuildTrackIndex(playlists);
 
   return playlistData;
 });
 
 ipcMain.handle("refresh-library", async () => {
-  const playlists = store.get("playlists");
   const refreshed: Playlist[] = [];
 
-  for (const pl of playlists) {
+  for (const pl of store.get("playlists")) {
     try {
-      let freshData: Playlist;
-      if (pl.source === "spotify") {
-        const spotifyConfig = store.get("spotify");
-        if (!spotifyConfig.clientId || !spotifyConfig.clientSecret) {
-          refreshed.push(pl);
-          continue;
-        }
-        const spotify = new SpotifyService(
-          spotifyConfig.clientId,
-          spotifyConfig.clientSecret,
-        );
-        freshData = await spotify.getPlaylist(pl.url);
-      } else if (pl.source === "soundcloud") {
-        const sc = new SoundCloudService();
-        freshData = await sc.getPlaylist(pl.url);
-      } else {
-        refreshed.push(pl);
-        continue;
-      }
+      const freshData = await fetchPlaylist(pl.url);
       freshData.addedAt = pl.addedAt;
       refreshed.push(freshData);
     } catch {
@@ -403,94 +420,7 @@ ipcMain.handle("refresh-library", async () => {
   }
 
   store.set("playlists", refreshed);
-
-  // Scan local files from library
-  const localTracks = await scanLocalFiles();
-  console.log(`[Kusic] Scanned ${localTracks.length} local files`);
-
-  // Create a map of linkedTrackId -> local file data for merging
-  const linkedLocalFiles = new Map<string, Track>();
-  const orphanedLocalTracks: Track[] = [];
-
-  for (const localTrack of localTracks) {
-    if (localTrack.linkedTrackId) {
-      linkedLocalFiles.set(localTrack.linkedTrackId, localTrack);
-      console.log(
-        `[Kusic] Linked file: ${localTrack.filePath} -> ${localTrack.linkedTrackId}`,
-      );
-    } else {
-      orphanedLocalTracks.push(localTrack);
-    }
-  }
-
-  console.log(
-    `[Kusic] Found ${linkedLocalFiles.size} linked files, ${orphanedLocalTracks.length} orphaned`,
-  );
-
-  // Rebuild unified track list with merged data
-  const allTracks: Track[] = [];
-  const matchedLinkedIds = new Set<string>();
-
-  for (const pl of refreshed) {
-    for (const track of pl.tracks) {
-      // Check if there's a linked local file for this track
-      const linkedLocal = linkedLocalFiles.get(track.id);
-      if (linkedLocal) {
-        matchedLinkedIds.add(track.id);
-        // Merge: keep playlist metadata, add local file quality info
-        allTracks.push({
-          ...track,
-          format: linkedLocal.format,
-          bitRate: linkedLocal.bitRate,
-          sampleRate: linkedLocal.sampleRate,
-          bitDepth: linkedLocal.bitDepth,
-          filePath: linkedLocal.filePath,
-        });
-      } else {
-        // Ensure no stale local file data - push clean track
-        allTracks.push({
-          id: track.id,
-          source: track.source,
-          title: track.title,
-          artist: track.artist,
-          album: track.album,
-          artwork: track.artwork,
-          duration: track.duration,
-          addedAt: track.addedAt,
-          spotifyUrl: track.spotifyUrl,
-          soundcloudUrl: track.soundcloudUrl,
-          previewUrl: track.previewUrl,
-          streamUrl: track.streamUrl,
-          // Explicitly NO format, bitRate, sampleRate, bitDepth, filePath
-        });
-      }
-    }
-  }
-
-  // Add orphaned local files (unknown source)
-  for (const track of orphanedLocalTracks) {
-    allTracks.push(track);
-  }
-
-  // Add linked files whose playlists were removed (convert to local orphan)
-  for (const [linkedId, localTrack] of linkedLocalFiles) {
-    if (!matchedLinkedIds.has(linkedId)) {
-      // Playlist was removed, convert to local orphan
-      allTracks.push({
-        ...localTrack,
-        source: "local" as const,
-        linkedTrackId: undefined, // Clear the stale link
-      });
-    }
-  }
-
-  store.set("tracks", allTracks);
-
-  return {
-    playlists: refreshed,
-    totalTracks: allTracks.length,
-    localTracks: localTracks.length,
-  };
+  return { playlists: refreshed, ...(await rebuildTrackIndex(refreshed)) };
 });
 
 // Tag a downloaded file with playlist track metadata
@@ -504,22 +434,12 @@ ipcMain.handle(
       }
 
       // Find the file in library (slskd might put it in subdirectories)
-      let filePath = await findFileInLibrary(libraryPath, filename);
+      let filePath = findFileInLibrary(libraryPath, filename);
       if (!filePath) {
         return { success: false, error: "File not found in library" };
       }
 
-      // Find the playlist track
-      const playlists = store.get("playlists");
-      let playlistTrack: Track | null = null;
-      for (const pl of playlists) {
-        const track = pl.tracks.find((t) => t.id === trackId);
-        if (track) {
-          playlistTrack = track;
-          break;
-        }
-      }
-
+      const playlistTrack = findPlaylistTrack(trackId);
       if (!playlistTrack) {
         return { success: false, error: "Playlist track not found" };
       }
@@ -534,29 +454,15 @@ ipcMain.handle(
       const merged = mergeMetadata(playlistTrack, fileMetadata);
       const success = await writeMetadataToFile(filePath, merged);
 
-      // Generate clean filename: "Artist - Title.ext"
-      const ext = path.extname(filePath);
-      const cleanTitle = sanitizeFilename(playlistTrack.title);
-      const cleanArtist = sanitizeFilename(playlistTrack.artist);
-      const newFilename = `${cleanArtist} - ${cleanTitle}${ext}`;
-      const targetPath = path.join(libraryPath, newFilename);
-
-      // Move/rename file (replace existing if any)
+      // Move/rename to "Artist - Title.ext" (replace existing if any)
+      const targetPath = path.join(
+        libraryPath,
+        libraryFilename(playlistTrack, path.extname(filePath)),
+      );
       if (filePath !== targetPath) {
-        const fileDir = path.dirname(filePath);
-
-        // Delete existing file if present
-        if (fs.existsSync(targetPath)) {
-          fs.unlinkSync(targetPath);
-        }
-
-        fs.renameSync(filePath, targetPath);
+        if (fs.existsSync(targetPath)) fs.unlinkSync(targetPath);
+        moveIntoLibrary(filePath, targetPath, libraryPath);
         filePath = targetPath;
-
-        // Clean up empty directories if moved from subdirectory
-        if (fileDir !== libraryPath) {
-          cleanEmptyDirs(fileDir, libraryPath);
-        }
       }
 
       return { success, filePath };
@@ -573,6 +479,18 @@ function sanitizeFilename(name: string): string {
     .replace(/[<>:"/\\|?*]/g, "") // Remove invalid chars
     .replace(/\s+/g, " ") // Collapse spaces
     .trim();
+}
+
+/** "Artist - Title<suffix><ext>" with filesystem-safe parts. */
+function libraryFilename(track: Track, ext: string, suffix = ""): string {
+  return `${sanitizeFilename(track.artist)} - ${sanitizeFilename(track.title)}${suffix}${ext}`;
+}
+
+/** Rename a file and remove the subdirectories it leaves empty. */
+function moveIntoLibrary(from: string, to: string, libraryPath: string) {
+  const fromDir = path.dirname(from);
+  fs.renameSync(from, to);
+  if (fromDir !== libraryPath) cleanEmptyDirs(fromDir, libraryPath);
 }
 
 function cleanEmptyDirs(dir: string, stopAt: string) {
@@ -592,28 +510,21 @@ function cleanEmptyDirs(dir: string, stopAt: string) {
   }
 }
 
-async function findFileInLibrary(
-  libraryPath: string,
-  filename: string,
-): Promise<string | null> {
-  const searchRecursive = (dir: string): string | null => {
-    try {
-      const entries = fs.readdirSync(dir, { withFileTypes: true });
-      for (const entry of entries) {
-        const fullPath = path.join(dir, entry.name);
-        if (entry.isDirectory()) {
-          const found = searchRecursive(fullPath);
-          if (found) return found;
-        } else if (entry.name === filename) {
-          return fullPath;
-        }
+function findFileInLibrary(dir: string, filename: string): string | null {
+  try {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        const found = findFileInLibrary(fullPath, filename);
+        if (found) return found;
+      } else if (entry.name === filename) {
+        return fullPath;
       }
-    } catch (err) {
-      // Skip inaccessible directories
     }
-    return null;
-  };
-  return searchRecursive(libraryPath);
+  } catch {
+    // Skip inaccessible directories
+  }
+  return null;
 }
 
 ipcMain.handle(
@@ -621,7 +532,6 @@ ipcMain.handle(
   async (_, unknownTrackId: string, targetTrackId: string) => {
     try {
       const tracks = store.get("tracks");
-      const playlists = store.get("playlists");
       const libraryPath = store.get("soulseek").libraryPath;
 
       // Find the unknown track (local file)
@@ -632,15 +542,7 @@ ipcMain.handle(
         return { success: false, error: "Fichier source non trouvé" };
       }
 
-      // Find the target playlist track
-      let targetTrack: Track | null = null;
-      for (const pl of playlists) {
-        const found = pl.tracks.find((t) => t.id === targetTrackId);
-        if (found) {
-          targetTrack = found;
-          break;
-        }
-      }
+      const targetTrack = findPlaylistTrack(targetTrackId);
       if (!targetTrack) {
         return { success: false, error: "Morceau cible non trouvé" };
       }
@@ -657,68 +559,41 @@ ipcMain.handle(
       // Small delay to ensure file handle is released on Windows
       await new Promise((resolve) => setTimeout(resolve, 100));
 
-      // Rename file to "Artiste - Titre.ext"
+      // Rename file to "Artiste - Titre.ext", suffixing " (n)" on conflicts
       const ext = path.extname(filePath);
-      const cleanTitle = sanitizeFilename(targetTrack.title);
-      const cleanArtist = sanitizeFilename(targetTrack.artist);
-      const newFilename = `${cleanArtist} - ${cleanTitle}${ext}`;
-      let finalPath = path.join(libraryPath, newFilename);
-
-      // Handle name conflicts
-      if (fs.existsSync(finalPath) && finalPath !== filePath) {
+      let finalPath = path.join(libraryPath, libraryFilename(targetTrack, ext));
+      for (
         let counter = 1;
-        while (fs.existsSync(finalPath)) {
-          finalPath = path.join(
-            libraryPath,
-            `${cleanArtist} - ${cleanTitle} (${counter})${ext}`,
-          );
-          counter++;
-        }
+        finalPath !== filePath && fs.existsSync(finalPath);
+        counter++
+      ) {
+        finalPath = path.join(
+          libraryPath,
+          libraryFilename(targetTrack, ext, ` (${counter})`),
+        );
       }
 
-      // Move/rename file
-      const normalizedFilePath = path.normalize(filePath).toLowerCase();
-      const normalizedFinalPath = path.normalize(finalPath).toLowerCase();
-
-      if (normalizedFilePath !== normalizedFinalPath) {
-        const fileDir = path.dirname(filePath);
-        fs.renameSync(filePath, finalPath);
-
-        if (fileDir !== libraryPath) {
-          cleanEmptyDirs(fileDir, libraryPath);
-        }
+      if (
+        path.normalize(filePath).toLowerCase() !==
+        path.normalize(finalPath).toLowerCase()
+      ) {
+        moveIntoLibrary(filePath, finalPath, libraryPath);
       }
 
       // Update tracks store: remove unknown track and merge quality info with target track
+      const linkedFile = { ...unknownTrack, filePath: finalPath };
       let targetFound = false;
       const updatedTracks = tracks
         .filter((t) => t.id !== unknownTrackId)
         .map((t) => {
-          if (t.id === targetTrackId) {
-            targetFound = true;
-            // Merge quality info from unknown track to the target track
-            return {
-              ...t,
-              format: unknownTrack.format,
-              bitRate: unknownTrack.bitRate,
-              sampleRate: unknownTrack.sampleRate,
-              bitDepth: unknownTrack.bitDepth,
-              filePath: finalPath,
-            };
-          }
-          return t;
+          if (t.id !== targetTrackId) return t;
+          targetFound = true;
+          return withLocalFile(t, linkedFile);
         });
 
       // If target track wasn't in the store, add it with quality info
       if (!targetFound) {
-        updatedTracks.push({
-          ...targetTrack,
-          format: unknownTrack.format,
-          bitRate: unknownTrack.bitRate,
-          sampleRate: unknownTrack.sampleRate,
-          bitDepth: unknownTrack.bitDepth,
-          filePath: finalPath,
-        });
+        updatedTracks.push(withLocalFile(targetTrack, linkedFile));
       }
 
       store.set("tracks", updatedTracks);
@@ -736,32 +611,33 @@ ipcMain.handle(
 );
 
 ipcMain.handle("remove-playlist", (_, playlistId: string) => {
-  let playlists = store.get("playlists");
-  const playlist = playlists.find((p) => p.id === playlistId);
-
-  playlists = playlists.filter((p) => p.id !== playlistId);
+  const allPlaylists = store.get("playlists");
+  const removed = allPlaylists.find((p) => p.id === playlistId);
+  const playlists = allPlaylists.filter((p) => p.id !== playlistId);
   store.set("playlists", playlists);
 
-  if (playlist) {
-    const remainingTrackIds = new Set<string>();
-    playlists.forEach((p) =>
-      p.tracks.forEach((t) => remainingTrackIds.add(t.id)),
+  if (removed) {
+    // Drop the tracks that only belonged to the removed playlist
+    const remainingIds = new Set(playlists.flatMap((p) => p.tracks.map((t) => t.id)));
+    const removedIds = new Set(removed.tracks.map((t) => t.id));
+    store.set(
+      "tracks",
+      store.get("tracks").filter((t) => remainingIds.has(t.id) || !removedIds.has(t.id)),
     );
-
-    let tracks = store.get("tracks");
-    tracks = tracks.filter(
-      (t) =>
-        remainingTrackIds.has(t.id) ||
-        !playlist.tracks.find((pt) => pt.id === t.id),
-    );
-    store.set("tracks", tracks);
   }
 
   return playlists;
 });
 
+const TRACK_SORTERS: Record<string, (a: Track, b: Track) => number> = {
+  title: (a, b) => a.title.localeCompare(b.title),
+  artist: (a, b) => a.artist.localeCompare(b.artist),
+  duration: (a, b) => a.duration - b.duration,
+  recent: (a, b) => (b.addedAt || 0) - (a.addedAt || 0),
+};
+
 ipcMain.handle("get-tracks", (_, filters: TrackFilters = {}) => {
-  let tracks = [...store.get("tracks")];
+  let tracks = store.get("tracks");
 
   if (filters.search) {
     const q = filters.search.toLowerCase();
@@ -777,17 +653,7 @@ ipcMain.handle("get-tracks", (_, filters: TrackFilters = {}) => {
     tracks = tracks.filter((t) => t.source === filters.source);
   }
 
-  if (filters.sortBy === "title") {
-    tracks.sort((a, b) => a.title.localeCompare(b.title));
-  } else if (filters.sortBy === "artist") {
-    tracks.sort((a, b) => a.artist.localeCompare(b.artist));
-  } else if (filters.sortBy === "duration") {
-    tracks.sort((a, b) => a.duration - b.duration);
-  } else {
-    tracks.sort((a, b) => (b.addedAt || 0) - (a.addedAt || 0));
-  }
-
-  return tracks;
+  return tracks.sort(TRACK_SORTERS[filters.sortBy ?? "recent"] ?? TRACK_SORTERS.recent);
 });
 
 ipcMain.handle("get-stats", () => {
@@ -832,11 +698,6 @@ ipcMain.handle("slskd-get-version", () =>
     : null,
 );
 
-ipcMain.handle(
-  "slskd-check-binary",
-  () => slskdManager?.isBinaryInstalled() ?? false,
-);
-
 ipcMain.handle("slskd-download-binary", async () => {
   if (!slskdManager) throw new Error("Manager not initialized");
   return await slskdManager.downloadBinary((progress) => {
@@ -871,38 +732,30 @@ ipcMain.handle("slskd-status", async () => {
   return await slskdManager.getStatus();
 });
 
-ipcMain.handle("slskd-search", async (_, query: string) => {
+/** The slskd API client, or an error when the daemon is not running. */
+function slskdApi(): SlskdAPI {
+  if (!slskdManager?.isRunning) throw new Error("slskd n'est pas démarré");
+  return slskdManager.getAPI();
+}
+
+ipcMain.handle("slskd-search", (_, query: string) => {
   console.log(`[Search] Starting search for: "${query}"`);
-  if (!slskdManager || !slskdManager.isRunning) {
-    throw new Error("slskd n'est pas démarré");
-  }
-  const api = slskdManager.getAPI();
-  return await api.search(query);
+  return slskdApi().search(query);
 });
 
 ipcMain.handle("slskd-cancel-search", async (_, searchId: string) => {
-  if (!slskdManager || !slskdManager.isRunning) {
-    return;
-  }
-  const api = slskdManager.getAPI();
-  await api.cancelSearch(searchId);
+  if (slskdManager?.isRunning) await slskdApi().cancelSearch(searchId);
 });
 
 ipcMain.handle(
   "slskd-get-search-results",
-  async (
+  (
     _,
     {
       searchId,
       includeFiles = true,
     }: { searchId: string; includeFiles?: boolean },
-  ) => {
-    if (!slskdManager || !slskdManager.isRunning) {
-      throw new Error("slskd n'est pas démarré");
-    }
-    const api = slskdManager.getAPI();
-    return await api.getSearchResults(searchId, includeFiles);
-  },
+  ) => slskdApi().getSearchResults(searchId, includeFiles),
 );
 
 ipcMain.handle(
@@ -915,19 +768,14 @@ ipcMain.handle(
       size,
     }: { username: string; filename: string; size: number },
   ) => {
-    if (!slskdManager || !slskdManager.isRunning) {
-      throw new Error("slskd n'est pas démarré");
-    }
-    const api = slskdManager.getAPI();
-    await api.download(username, [{ filename, size }]);
+    await slskdApi().download(username, [{ filename, size }]);
     return true;
   },
 );
 
-ipcMain.handle("slskd-get-downloads", async () => {
-  if (!slskdManager || !slskdManager.isRunning) return [];
-  return await slskdManager.getAPI().getDownloads();
-});
+ipcMain.handle("slskd-get-downloads", () =>
+  slskdManager?.isRunning ? slskdApi().getDownloads() : [],
+);
 
 ipcMain.handle(
   "slskd-cancel-download",
@@ -935,10 +783,7 @@ ipcMain.handle(
     _,
     { username, id, remove }: { username: string; id: string; remove: boolean },
   ) => {
-    if (!slskdManager || !slskdManager.isRunning) {
-      throw new Error("slskd n'est pas démarré");
-    }
-    await slskdManager.getAPI().cancelDownload(username, id, remove);
+    await slskdApi().cancelDownload(username, id, remove);
     return true;
   },
 );
@@ -954,36 +799,7 @@ ipcMain.handle(
       size,
     }: { username: string; id: string; filename: string; size: number },
   ) => {
-    if (!slskdManager || !slskdManager.isRunning) {
-      throw new Error("slskd n'est pas démarré");
-    }
-    await slskdManager.getAPI().retryDownload(username, id, filename, size);
+    await slskdApi().retryDownload(username, id, filename, size);
     return true;
   },
 );
-
-ipcMain.handle("slskd-clear-completed-downloads", async () => {
-  if (!slskdManager || !slskdManager.isRunning) {
-    throw new Error("slskd n'est pas démarré");
-  }
-  await slskdManager.getAPI().clearCompletedDownloads();
-  return true;
-});
-
-ipcMain.handle("slskd-get-uploads", async () => {
-  if (!slskdManager || !slskdManager.isRunning) return [];
-  return await slskdManager.getAPI().getUploads();
-});
-
-ipcMain.handle("slskd-rescan-shares", async () => {
-  if (!slskdManager || !slskdManager.isRunning) {
-    throw new Error("slskd n'est pas démarré");
-  }
-  await slskdManager.getAPI().rescanShares();
-  return true;
-});
-
-ipcMain.handle("slskd-get-shares", async () => {
-  if (!slskdManager || !slskdManager.isRunning) return null;
-  return await slskdManager.getAPI().getShares();
-});

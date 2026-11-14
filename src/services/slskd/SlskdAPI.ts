@@ -43,10 +43,7 @@ export class SlskdAPI {
     try {
       const response = await this.client.get("/api/v0/application");
       return response.status === 200;
-    } catch (err) {
-      if (axios.isAxiosError(err) && err.response) {
-        return err.response.status === 200;
-      }
+    } catch {
       return false;
     }
   }
@@ -153,15 +150,11 @@ export class SlskdAPI {
 
   async download(
     username: string,
-    files: Array<{ filename: string; size: number } | string>,
+    files: Array<{ filename: string; size?: number }>,
   ): Promise<void> {
     await this.client.post(
-      `/api/v0/transfers/downloads/${username}`,
-      files.map((f) =>
-        typeof f === "string"
-          ? { filename: f }
-          : { filename: f.filename, size: f.size },
-      ),
+      `/api/v0/transfers/downloads/${encodeURIComponent(username)}`,
+      files,
     );
   }
 
@@ -186,34 +179,8 @@ export class SlskdAPI {
     filename: string,
     size: number,
   ): Promise<void> {
-    // Remove the old failed transfer first
-    await this.client.delete(
-      `/api/v0/transfers/downloads/${encodeURIComponent(username)}/${encodeURIComponent(id)}?remove=true`,
-    );
-    // Re-enqueue
-    const file: { filename: string; size?: number } = { filename };
-    if (size > 0) file.size = size;
-    await this.client.post(
-      `/api/v0/transfers/downloads/${encodeURIComponent(username)}`,
-      [file],
-    );
-  }
-
-  async clearCompletedDownloads(): Promise<void> {
-    await this.client.delete("/api/v0/transfers/downloads/all/completed");
-  }
-
-  async getUploads(): Promise<unknown[]> {
-    const response = await this.client.get("/api/v0/transfers/uploads");
-    return response.data;
-  }
-
-  async getShares(): Promise<unknown> {
-    const response = await this.client.get("/api/v0/shares");
-    return response.data;
-  }
-
-  async rescanShares(): Promise<void> {
-    await this.client.put("/api/v0/shares");
+    // Remove the old failed transfer first, then re-enqueue
+    await this.cancelDownload(username, id, true);
+    await this.download(username, [size > 0 ? { filename, size } : { filename }]);
   }
 }

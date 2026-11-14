@@ -50,13 +50,6 @@ export interface AppSettings {
   soulseek: SoulseekConfig;
 }
 
-export interface AppStats {
-  totalPlaylists: number;
-  totalTracks: number;
-  spotifyTracks: number;
-  soundcloudTracks: number;
-}
-
 export interface TrackFilters {
   search?: string;
   source?: "all" | "spotify" | "soundcloud" | "local" | "unknown";
@@ -85,20 +78,4 @@ export interface SlskdSearchResult {
   length?: number;
   extension: string;
   quality: number;
-}
-
-export interface SlskdSearchResponse {
-  id: string;
-  results: SlskdSearchResult[];
-}
-
-export interface PlatformInfo {
-  supported: boolean;
-  platform: string;
-  arch?: string;
-}
-
-export interface VersionInfo {
-  version: string;
-  installed: boolean;
 }

@@ -19,7 +19,6 @@ export class SlskdManager {
   private process: ChildProcess | null = null;
   private api: SlskdAPI | null = null;
   isRunning = false;
-  private version = SLSKD_VERSION;
 
   private resourcesPath: string;
   private binaryPath: string | null;
@@ -39,31 +38,23 @@ export class SlskdManager {
     return process.platform === SUPPORTED_PLATFORM;
   }
 
+  /** Release flavor matching this machine, e.g. "win-x64". */
+  private get platformTarget(): string {
+    return process.arch === "arm64" ? "win-arm64" : "win-x64";
+  }
+
   private getBinaryPath(): string | null {
-    if (process.platform !== "win32") {
+    if (!this.isPlatformSupported()) {
       console.warn(
         "[slskd] Cette plateforme n'est pas supportée. Seul Windows est supporté.",
       );
       return null;
     }
-
-    const arch = process.arch;
-    const platformFolder = arch === "arm64" ? "win-arm64" : "win-x64";
-    return path.join(this.resourcesPath, "bin", platformFolder, "slskd.exe");
-  }
-
-  private getDownloadUrl(): string {
-    if (process.platform !== "win32") {
-      throw new Error("Seul Windows est supporté actuellement");
-    }
-
-    const arch = process.arch;
-    const platformSuffix = arch === "arm64" ? "win-arm64" : "win-x64";
-    return `https://github.com/slskd/slskd/releases/download/${SLSKD_VERSION}/slskd-${SLSKD_VERSION}-${platformSuffix}.zip`;
+    return path.join(this.resourcesPath, "bin", this.platformTarget, "slskd.exe");
   }
 
   getVersion(): string {
-    return this.version;
+    return SLSKD_VERSION;
   }
 
   isBinaryInstalled(): boolean {
@@ -82,7 +73,7 @@ export class SlskdManager {
       throw new Error("Impossible de déterminer le chemin du binaire");
     }
 
-    const url = this.getDownloadUrl();
+    const url = `https://github.com/slskd/slskd/releases/download/${SLSKD_VERSION}/slskd-${SLSKD_VERSION}-${this.platformTarget}.zip`;
     const zipPath = path.join(this.resourcesPath, "slskd.zip");
     const binDir = path.dirname(this.binaryPath);
 
@@ -239,14 +230,9 @@ export class SlskdManager {
     const tempApi = new SlskdAPI("http://localhost:5030");
 
     for (let i = 0; i < maxAttempts; i++) {
-      try {
-        const isReady = await tempApi.healthCheck();
-        if (isReady) {
-          console.log("[slskd] API is ready");
-          return true;
-        }
-      } catch {
-        // Ignore errors during startup
+      if (await tempApi.healthCheck()) {
+        console.log("[slskd] API is ready");
+        return true;
       }
       await new Promise((r) => setTimeout(r, interval));
     }
