@@ -1627,11 +1627,9 @@ a:hover {
   font-variant-numeric: tabular-nums;
 }
 
-/* Filled with the banner text's orange, number in the banner's dark brown */
+/* Same badge as the downloads one, in the warning color */
 .nav-badge-warning {
   background: var(--warning);
-  color: #271c0f;
-  margin-left: 4px;
 }
 
 /* ─── Track status column ────────────────────────────────────── */
@@ -1858,8 +1856,8 @@ button.identify-result-row {
 
 .conflict-art {
   display: block;
-  width: 64px;
-  height: 64px;
+  width: 44px;
+  height: 44px;
   border-radius: 4px;
   object-fit: cover;
   background: var(--bg-active);
