@@ -6,7 +6,7 @@
 import {
   $, api, baseName, bus, closeModal, durationBand, durationMatch, errorMessage, escapeHtml,
   formatBadge, formatDuration, formatSize, formatTime, icon, ICONS, isLossless, normalizeQuery,
-  openModal, showToast, sourceBadge, thumb, toastError,
+  openModal, showToast, sourceBadge, SPINNER, thumb, toastError,
 } from './ui.js';
 import { pendingDownloadFor } from './downloads.js';
 import { fallbackQuery, isRelevant, relevanceOf, searchStats, trackQuery } from './query.js';
@@ -132,7 +132,7 @@ const filters = {
   bitrate: $('#result-bitrate'),
   sort: $('#result-sort'),
 };
-const LOADING_HTML = '<div class="slskd-loading"><p>Recherche sur le réseau Soulseek…</p></div>';
+const LOADING_HTML = `<div class="slskd-loading">${SPINNER}<p>Recherche sur le réseau Soulseek…</p></div>`;
 
 /** What the modal displays: the track, and the session or cached results shown. */
 let shown = null; // { track, key, session, renderedVersion }

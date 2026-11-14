@@ -1234,6 +1234,13 @@ a:hover {
   text-align: center;
 }
 
+.slskd-loading .spinner {
+  width: 28px;
+  height: 28px;
+  margin-bottom: 12px;
+  color: var(--accent);
+}
+
 /* ─── Downloads View ─────────────────────────────────────────── */
 .nav-badge {
   background: var(--accent);
