@@ -1944,36 +1944,10 @@ button.identify-result-row {
   color: var(--accent);
 }
 
-/* ─── Track menu, ignored tracks, matches ────────────────────── */
+/* ─── Track menu, matches ────────────────────────────────────── */
 .source-badge.matched {
   background: rgba(108, 92, 231, 0.18);
   color: var(--accent-hover);
-}
-
-.track-row.ignored {
-  opacity: 0.5;
-}
-
-.track-menu-btn {
-  border: none;
-  background: none;
-  color: var(--text-muted);
-  font-size: 16px;
-  line-height: 1;
-  padding: 4px;
-  border-radius: 4px;
-  cursor: pointer;
-  opacity: 0;
-}
-
-.track-row:hover .track-menu-btn,
-.track-menu-btn:focus-visible {
-  opacity: 1;
-}
-
-.track-menu-btn:hover {
-  color: var(--text-primary);
-  background: var(--bg-hover);
 }
 
 .context-menu {
@@ -2078,8 +2052,12 @@ button.identify-result-row {
   color: var(--success) !important;
 }
 
-.identify-has-file {
-  color: var(--success);
-  font-size: 11px;
-  white-space: nowrap;
+/* Header labels aligned like their right-aligned cells */
+.track-list-header .col-duration {
+  text-align: right;
+}
+
+.track-list-header .col-file {
+  text-align: right;
+  padding-right: 6px;
 }

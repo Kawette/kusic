@@ -123,10 +123,10 @@ function rowHtml(track, i) {
   statusCache.set(track.id, status);
   const canIdentify = !track.playlistIds && track.filePath;
   const badge = track.suggestedTrackIds
-    ? `<span class="source-badge matched" title="Un morceau de vos playlists correspond à ce fichier : cliquez sur la loupe pour vérifier et lier">● Correspondance</span>`
+    ? `<span class="source-badge matched" title="Un morceau de vos playlists correspond à ce fichier : cliquez sur la loupe pour vérifier et lier">● À lier</span>`
     : `<span class="source-badge ${escapeHtml(track.source)}">${SOURCE_LABELS[track.source] || SOURCE_LABELS.unknown}</span>`;
   return `
-    <div class="track-row${track.ignored ? ' ignored' : ''}" data-track-id="${escapeHtml(track.id)}">
+    <div class="track-row" data-track-id="${escapeHtml(track.id)}">
       <span class="track-num">${i + 1}</span>
       <div class="track-title-cell">
         ${track.artwork ? `<img class="track-thumb" src="${escapeHtml(track.artwork)}" alt="" loading="lazy">` : '<span class="track-thumb"></span>'}
@@ -142,7 +142,7 @@ function rowHtml(track, i) {
       </span>
       <span class="track-duration">${formatDuration(track.duration)}</span>
       <span class="track-actions">${status}</span>
-      <button class="track-menu-btn" data-action="menu" title="Plus d'actions">⋯</button>
+      <button class="track-download-btn track-menu-btn" data-action="menu" title="Plus d'actions">${icon(ICONS.more, 16)}</button>
     </div>`;
 }
 
@@ -209,7 +209,7 @@ trackList.addEventListener('contextmenu', (e) => {
 /** Per-track actions; anything destructive asks for confirmation. */
 function showTrackMenu(track, x, y) {
   const items = [];
-  if (track.playlistIds && !track.ignored) {
+  if (track.playlistIds) {
     items.push({ label: 'Rechercher sur Soulseek', action: () => openSearch(track).catch(toastError) });
   }
   if (!track.playlistIds && track.filePath) {
@@ -223,12 +223,6 @@ function showTrackMenu(track, x, y) {
       danger: true,
       action: () => deleteFile(track),
     });
-  }
-  if (track.playlistIds) {
-    if (items.length && items[items.length - 1] !== 'separator') items.push('separator');
-    items.push(track.ignored
-      ? { label: 'Ne plus ignorer', action: () => setIgnored(track, false) }
-      : { label: 'Ignorer cette piste', action: () => setIgnored(track, true) });
   }
   showMenu(x, y, items);
 }
@@ -244,16 +238,6 @@ async function deleteFile(track) {
   }
 }
 
-async function setIgnored(track, ignored) {
-  try {
-    await api.setTrackIgnored(track.id, ignored);
-    showToast(ignored
-      ? 'Piste ignorée (filtre « Ignorées » pour la retrouver)'
-      : 'La piste n’est plus ignorée', 'success');
-  } catch (err) {
-    toastError(err);
-  }
-}
 
 // ─── Controls ───────────────────────────────────────────────
 let searchTimeout;

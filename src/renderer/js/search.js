@@ -5,7 +5,7 @@
 
 import {
   $, api, bus, closeModal, DURATION_TOLERANCE_MS, errorMessage, escapeHtml, formatBadge,
-  formatDuration, formatSize, formatTime, icon, ICONS, isLossless, normalizeQuery, openModal,
+  durationMatch, formatDuration, formatSize, formatTime, icon, ICONS, isLossless, normalizeQuery, openModal,
   showToast, SOURCE_LABELS, toastError, trackQuery,
 } from './ui.js';
 import { pendingDownloadFor } from './downloads.js';
@@ -159,7 +159,7 @@ export async function openSearch(track, options = {}) {
     </div>
     <span class="source-badge ${escapeHtml(track.source)}">${SOURCE_LABELS[track.source] || ''}</span>
     <span class="slskd-target-duration" title="Durée de la piste">${formatDuration(track.duration)}</span>
-    ${track.format ? `<span class="slskd-target-file">Fichier actuel : ${formatBadge(track.format)}</span>` : ''}`;
+    ${track.format ? `<span class="slskd-target-file" title="Format du fichier actuel">${formatBadge(track.format)}</span>` : ''}`;
 
   openModal(modal, () => { shown = null; });
   await showQuery(queryInput.value);
@@ -238,17 +238,6 @@ function applyFilters(results) {
   return filtered.sort(sorters[filters.sort.value] || sorters.quality);
 }
 
-/** Green when the length matches the track, orange when clearly another version. */
-function durationMatch(lengthSec, target) {
-  if (!lengthSec || !target) return { cls: '', title: '' };
-  const gap = Math.abs(lengthSec * 1000 - target);
-  if (gap <= 3000) return { cls: 'duration-ok', title: 'Même durée que la piste' };
-  if (gap > DURATION_TOLERANCE_MS) {
-    return { cls: 'duration-mismatch', title: `Durée très différente de la piste (${formatDuration(target)}) : probablement une autre version` };
-  }
-  return { cls: '', title: `Écart de ${Math.round(gap / 1000)} s avec la piste` };
-}
-
 const downloadKey = (r) => `${r.username}\u0000${r.filename}`;
 
 function renderResults(searching) {
@@ -267,7 +256,7 @@ function renderResults(searching) {
     const name = r.filename.split(/[\\/]/).pop();
     const quality = [r.bitRate && `${r.bitRate} kbps`, r.sampleRate && `${(r.sampleRate / 1000).toFixed(1)} kHz`]
       .filter(Boolean).join(' · ') || '—';
-    const duration = durationMatch(r.length, target);
+    const duration = durationMatch(r.length && r.length * 1000, target);
     const started = startedDownloads.has(downloadKey(r)) || pendingDownloadFor(r.username, r.filename);
     const noSlot = r.hasFreeUploadSlot === false; // Unknown in older cached results
     const userInfo = `${noSlot ? 'Pas de slot libre : le téléchargement attendra dans sa file' : 'Slot libre'}${r.queueLength ? ` · file d'attente : ${r.queueLength}` : ''} · ${Math.round(r.uploadSpeed / 1024)} Ko/s`;
@@ -277,7 +266,7 @@ function renderResults(searching) {
       <span class="result-user" title="${escapeHtml(userInfo)}">${noSlot ? '<span class="no-slot">●</span>' : ''}<span class="result-username">${escapeHtml(r.username)}</span></span>
       <span class="result-format">${formatBadge(r.extension)}</span>
       <span class="result-quality">${escapeHtml(quality)}</span>
-      <span class="result-duration ${duration.cls}" title="${duration.title}">${r.length ? formatDuration(r.length * 1000) : '—'}${duration.cls === 'duration-ok' ? ' ✓' : ''}</span>
+      <span class="result-duration ${duration.cls}" title="${duration.title}">${r.length ? formatDuration(r.length * 1000) : '—'}</span>
       <span class="result-size">${formatSize(r.size)}</span>
       <button class="result-download-btn${started ? ' done' : ''}" data-index="${i}" ${started ? 'disabled title="Téléchargement lancé"' : 'title="Télécharger"'}>
         ${icon(started ? ICONS.check : ICONS.download)}

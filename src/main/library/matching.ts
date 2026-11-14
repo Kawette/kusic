@@ -50,31 +50,65 @@ interface Named {
   duration?: number;
 }
 
+interface Reading {
+  artists: string[];
+  title: string;
+  /** Title without version info */
+  base: string;
+}
+
 /**
  * The (artist, title) readings of a track. SoundCloud uploads often put
  * "Artist - Title" in the title with a label as uploader.
  */
-function readings({ artist, title }: Named): { artists: string[]; title: string }[] {
-  const result = [{ artists: artistNames(artist), title: coreTitle(title) }];
+function readings({ artist, title }: Named): Reading[] {
+  const read = (artists: string, raw: string): Reading => ({
+    artists: artistNames(artists),
+    title: coreTitle(raw),
+    base: coreTitle(baseTitle(raw)),
+  });
+  const result = [read(artist, title)];
   const dash = title.replace(PREMIERE_PREFIX, "").match(/^(.+?)\s+[-–—]\s+(.+)$/);
-  if (dash) result.push({ artists: artistNames(dash[1]), title: coreTitle(dash[2]) });
+  if (dash) result.push(read(dash[1], dash[2]));
   return result;
 }
 
-const MAX_DURATION_GAP = 15_000;
+const REMIX = /\b(remix|rmx|bootleg|rework|flip|vip|cover|remake)\b/i;
 
-/** Duration gap in ms when the two are a strict match, else null. */
+/**
+ * Title without version info such as "(EDIT)" or " - Extended Mix". Remix
+ * info is kept: a remix is another track, even with the same length.
+ */
+function baseTitle(title: string): string {
+  const dropVersion = (part: string) => (REMIX.test(part) ? part : " ");
+  return title
+    .replace(/\s*[[(][^\])]*[\])]/g, dropVersion)
+    .replace(/\s+-\s+[^-]*$/, dropVersion)
+    .trim();
+}
+
+/** Same title: up to this gap (another edit of the same track). */
+const MAX_SAME_TITLE_GAP = 60_000;
+/** Same title once version info is removed, or no artist: only if lengths agree. */
+const MAX_LOOSE_GAP = 3_000;
+
+/** Duration gap in ms when the file and the track are the same song, else null. */
 export function matchGap(file: Named, track: Named): number | null {
-  const gap = file.duration && track.duration ? Math.abs(file.duration - track.duration) : 0;
-  if (gap > MAX_DURATION_GAP) return null;
+  const known = !!(file.duration && track.duration);
+  const gap = known ? Math.abs(file.duration! - track.duration!) : 0;
+  const closeLength = known && gap <= MAX_LOOSE_GAP;
 
   for (const f of readings(file)) {
     for (const t of readings(track)) {
-      if (!f.title || f.title !== t.title) continue;
+      if (!f.title) continue;
       const sameArtist = f.artists.some((a) => t.artists.includes(a));
+      const sameTitle = f.title === t.title;
+      const sameBase = !!f.base && f.base === t.base;
+
+      if (sameArtist && sameTitle && gap <= MAX_SAME_TITLE_GAP) return gap;
+      if (sameArtist && sameBase && closeLength) return gap;
       // Untagged file without artist: the title alone is enough if the length matches
-      const unknownArtist = f.artists.length === 0 && gap > 0 && gap < 3000;
-      if (sameArtist || unknownArtist) return gap;
+      if (f.artists.length === 0 && sameTitle && closeLength) return gap;
     }
   }
   return null;

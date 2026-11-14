@@ -29,7 +29,6 @@ function playlistTrack(track: Track): Track {
   delete clean.linkedTrackIds;
   delete clean.conflictId;
   delete clean.suggestedTrackIds;
-  delete clean.ignored;
   return clean;
 }
 
@@ -41,14 +40,12 @@ function playlistTrack(track: Track): Track {
  *   when their tracks left every playlist;
  * - extra files linked to an already-matched track stay visible as "local";
  * - incoming files of pending conflicts are hidden, the track is flagged;
- * - unknown files get the playlist tracks they strictly match as suggestions;
- * - tracks hidden by the user are flagged `ignored`.
+ * - unknown files get the playlist tracks they strictly match as suggestions.
  */
 export function buildTrackIndex(
   playlists: Playlist[],
   localFiles: Track[],
   conflicts: FileConflict[] = [],
-  ignored: string[] = [],
 ): Track[] {
   const byId = new Map<string, Track>();
   for (const pl of playlists) {
@@ -91,13 +88,8 @@ export function buildTrackIndex(
     if (track) track.conflictId = conflict.id;
   }
 
-  for (const id of ignored) {
-    const track = byId.get(id);
-    if (track) track.ignored = true;
-  }
-
   // Suggest only tracks still missing a file
-  const missing = [...byId.values()].filter((t) => !t.filePath && !t.ignored);
+  const missing = [...byId.values()].filter((t) => !t.filePath);
   for (const file of extraFiles) {
     if (file.source !== "unknown") continue;
     const matches = findMatches(file, missing);

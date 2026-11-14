@@ -103,8 +103,7 @@ export class Library {
       if (conflicts.length !== this.data.conflicts.length) this.save("conflicts", conflicts);
     }
 
-    const { playlists, conflicts, ignored } = this.data;
-    const tracks = buildTrackIndex(playlists, localFiles, conflicts, ignored);
+    const tracks = buildTrackIndex(this.data.playlists, localFiles, this.data.conflicts);
     this.save("tracks", tracks);
     this.onChange();
     return { totalTracks: tracks.length, localTracks: localFiles.length };
@@ -128,18 +127,12 @@ export class Library {
       );
     }
 
-    // Hidden tracks only show up in their own filter
-    if (filters.source === "ignored") {
-      tracks = tracks.filter((t) => t.ignored);
-    } else {
-      tracks = tracks.filter((t) => !t.ignored);
-      if (filters.source === "missing") {
-        tracks = tracks.filter((t) => t.playlistIds && !t.format);
-      } else if (filters.source === "matched") {
-        tracks = tracks.filter((t) => t.suggestedTrackIds);
-      } else if (filters.source && filters.source !== "all") {
-        tracks = tracks.filter((t) => t.source === filters.source);
-      }
+    if (filters.source === "missing") {
+      tracks = tracks.filter((t) => t.playlistIds && !t.format);
+    } else if (filters.source === "matched") {
+      tracks = tracks.filter((t) => t.suggestedTrackIds);
+    } else if (filters.source && filters.source !== "all") {
+      tracks = tracks.filter((t) => t.source === filters.source);
     }
 
     const playlist = filters.playlistId
@@ -158,8 +151,7 @@ export class Library {
   }
 
   getStats() {
-    const { playlists, conflicts } = this.data;
-    const tracks = this.data.tracks.filter((t) => !t.ignored);
+    const { playlists, tracks, conflicts } = this.data;
     return {
       totalPlaylists: playlists.length,
       totalTracks: tracks.length,
@@ -174,24 +166,11 @@ export class Library {
     const localIds = new Set(
       this.data.tracks.filter((t) => t.playlistIds && t.format).map((t) => t.id),
     );
-    const ignored = new Set(this.data.ignored);
-    return this.data.playlists.map(({ tracks, ...pl }) => {
-      const kept = tracks.filter((t) => !ignored.has(t.id));
-      return {
-        ...pl,
-        trackCount: kept.length,
-        localCount: kept.filter((t) => localIds.has(t.id)).length,
-      };
-    });
-  }
-
-  /** Hide (or show again) a playlist track; survives playlist refreshes. */
-  setIgnored(trackId: string, ignored: boolean) {
-    return this.exclusive(async () => {
-      const others = this.data.ignored.filter((id) => id !== trackId);
-      this.save("ignored", ignored ? [...others, trackId] : others);
-      await this.rebuildNow({ rescan: false });
-    });
+    return this.data.playlists.map(({ tracks, ...pl }) => ({
+      ...pl,
+      trackCount: tracks.length,
+      localCount: tracks.filter((t) => localIds.has(t.id)).length,
+    }));
   }
 
   /** Send a track's local file to the Windows trash (user-confirmed). */

@@ -232,9 +232,6 @@ ipcMain.handle("link-unknown-to-track", (_, fileTrackId: string, targetTrackId: 
   library.linkUnknown(fileTrackId, targetTrackId),
 );
 ipcMain.handle("delete-local-file", (_, trackId: string) => library.deleteLocalFile(trackId));
-ipcMain.handle("set-track-ignored", (_, trackId: string, ignored: boolean) =>
-  library.setIgnored(trackId, ignored === true),
-);
 
 ipcMain.handle("get-conflicts", () => library.getConflicts());
 ipcMain.handle("resolve-conflict", (_, id: string, choice: ConflictChoice) => {

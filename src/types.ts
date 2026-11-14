@@ -26,8 +26,6 @@ export interface Track {
   conflictId?: string;
   /** Unknown file: playlist tracks it strictly matches (link on user click) */
   suggestedTrackIds?: string[];
-  /** Playlist track hidden by the user */
-  ignored?: boolean;
 }
 
 export interface Playlist {
@@ -60,7 +58,7 @@ export interface AppSettings {
 
 export interface TrackFilters {
   search?: string;
-  source?: "all" | "missing" | "matched" | "ignored" | PlaylistSource | "local" | "unknown";
+  source?: "all" | "missing" | "matched" | PlaylistSource | "local" | "unknown";
   playlistId?: string;
   sortBy?: "recent" | "title" | "artist" | "duration" | "playlist";
 }

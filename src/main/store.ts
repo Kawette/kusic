@@ -32,14 +32,12 @@ export interface LibraryData {
   playlists: Playlist[];
   tracks: Track[];
   conflicts: FileConflict[];
-  /** Playlist track ids hidden by the user */
-  ignored: string[];
 }
 
 /** Playlists, track index and conflicts (rewritten on every library change) */
 export const libraryStore = new Store<LibraryData>({
   name: "library",
-  defaults: { playlists: [], tracks: [], conflicts: [], ignored: [] },
+  defaults: { playlists: [], tracks: [], conflicts: [] },
 });
 
 // Older versions kept the library inside config.json, next to the secrets

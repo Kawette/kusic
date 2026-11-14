@@ -4,7 +4,8 @@
 // Otherwise the user searches by name. Linking only happens on click.
 
 import {
-  $, api, closeModal, escapeHtml, formatDuration, openModal, showToast, SOURCE_LABELS,
+  $, api, closeModal, durationMatch, escapeHtml, formatBadge, formatDuration, openModal, showToast,
+  SOURCE_LABELS,
   toastError,
 } from './ui.js';
 
@@ -31,12 +32,14 @@ function render() {
         return words.every((w) => text.includes(w));
       })
       .slice(0, MAX_RESULTS);
-    hint.textContent = shown.length ? 'Cliquez sur un morceau pour lier le fichier.' : 'Aucun morceau ne correspond.';
+    hint.textContent = shown.length
+      ? 'Morceaux de vos playlists contenant ces mots. Cliquez pour lier le fichier.'
+      : 'Aucun morceau de vos playlists ne contient ces mots. Modifiez la recherche.';
   } else {
     const ids = source.suggestedTrackIds || [];
     shown = ids.map((id) => playlistTracks.find((t) => t.id === id)).filter(Boolean);
     hint.textContent = shown.length
-      ? 'Correspondance trouvée (même titre, même artiste, durée proche). Vérifiez puis cliquez pour lier.'
+      ? 'Même titre et même artiste. Vérifiez la durée (orange = probablement une autre version) puis cliquez pour lier.'
       : 'Aucune correspondance évidente. Tapez un titre ou un artiste pour chercher.';
   }
 
@@ -47,9 +50,9 @@ function render() {
         <span class="identify-result-title">${escapeHtml(t.title)}</span>
         <span class="identify-result-artist">${escapeHtml(t.artist)}</span>
       </span>
-      <span class="identify-result-duration">${formatDuration(t.duration)}</span>
+      <span class="identify-result-duration ${durationMatch(t.duration, source.duration).cls}" title="${durationMatch(t.duration, source.duration).title}">${formatDuration(t.duration)}</span>
       <span class="source-badge ${escapeHtml(t.source)}">${SOURCE_LABELS[t.source] || SOURCE_LABELS.unknown}</span>
-      ${t.format ? '<span class="identify-has-file">a déjà un fichier</span>' : ''}
+      ${t.format ? `<span title="Cette piste a déjà un fichier : le lier ouvrira une comparaison pour choisir lequel garder">${formatBadge(t.format)}</span>` : ''}
     </button>`).join('');
 }
 
@@ -65,6 +68,7 @@ export async function openIdentify(track) {
   const tracks = (await api.getTracks({ source: 'all' })).filter((t) => t.playlistIds);
   if (source !== track) return; // Closed or reopened meanwhile
   playlistTracks = tracks.sort((a, b) => a.title.localeCompare(b.title));
+  if (!track.suggestedTrackIds) searchInput.value = track.title;
   render();
 }
 

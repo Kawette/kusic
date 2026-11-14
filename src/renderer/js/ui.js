@@ -22,6 +22,7 @@ export const ICONS = {
   trash: '<polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/>',
   export: '<path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/>',
   upgrade: '<line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/>',
+  more: '<circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/>',
   warning: '<path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>',
 };
 
@@ -58,6 +59,17 @@ export function formatDuration(ms) {
   if (!ms) return '—';
   const totalSeconds = Math.round(ms / 1000);
   return `${Math.floor(totalSeconds / 60)}:${String(totalSeconds % 60).padStart(2, '0')}`;
+}
+
+/** Green when a length matches the reference, orange when clearly another version. */
+export function durationMatch(lengthMs, referenceMs) {
+  if (!lengthMs || !referenceMs) return { cls: '', title: '' };
+  const gap = Math.abs(lengthMs - referenceMs);
+  if (gap <= 3000) return { cls: 'duration-ok', title: 'Même durée' };
+  if (gap > DURATION_TOLERANCE_MS) {
+    return { cls: 'duration-mismatch', title: `Durée très différente (${formatDuration(referenceMs)}) : probablement une autre version` };
+  }
+  return { cls: '', title: `Écart de ${Math.round(gap / 1000)} s` };
 }
 
 export function formatSize(bytes) {

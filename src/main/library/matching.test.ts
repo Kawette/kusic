@@ -32,6 +32,17 @@ describe("matchGap", () => {
     expect(matchGap(t("Artist", "Song", 200_000), t("Artist", "Song", 400_000))).toBeNull();
   });
 
+  it("accepts another edit of the same title and artist (shown as a duration gap)", () => {
+    expect(matchGap(t("Will Atkinson", "Big Bada Boom", 182_000), t("Will Atkinson", "Big Bada Boom", 207_000))).toBe(25_000);
+    expect(matchGap(t("ANDATA", "Never Gonna Stop", 252_000), t("ANDATA, 2HOT2PLAY", "Never Gonna Stop", 230_000))).toBe(22_000);
+  });
+
+  it("ignores version info only when the length is the same", () => {
+    const track = t("Rian Wood, Mr.Machine", "Better Off Alone", 254_000);
+    expect(matchGap(t("Rian Wood", "Rian Wood, Mr.Machine - Better Off Alone (EDIT)", 254_000), track)).toBe(0);
+    expect(matchGap(t("Fenrick", "Played-A-Live (Fenrick Extended Edit)", 236_000), t("Fenrick", "Played-A-Live - Fenrick Edit", 183_000))).toBeNull();
+  });
+
   it('reads SoundCloud "Artist - Title" titles', () => {
     expect(matchGap(t("NOAH", "Euromir"), t("Some Label", "BANGKIT PREMIERE: NOAH - Euromir"))).toBe(0);
   });
