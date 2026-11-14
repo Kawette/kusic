@@ -1636,6 +1636,10 @@ a:hover {
   text-align: center;
 }
 
+.track-download-btn .result-count.lossless {
+  background: var(--success);
+}
+
 .track-download-btn.empty .result-count {
   background: var(--bg-active);
   color: var(--text-secondary);
@@ -2202,4 +2206,9 @@ body.has-player .download-view-list {
 
 .identify-play-btn {
   margin-left: auto;
+}
+
+/* Search results whose file name lacks the track title */
+.slskd-result-row.off-topic {
+  opacity: 0.55;
 }

@@ -4,7 +4,7 @@ import {
   $, api, bus, errorMessage, escapeHtml, formatBadge, formatDuration, formatSize, icon, ICONS,
   isLossless, qualityLabel, showMenu, showToast, SOURCE_LABELS, SPINNER, toastError, withBusyButton,
 } from './ui.js';
-import { cachedCount, isSearching, openSearch, toggleAutoSearch } from './search.js';
+import { cachedStats, isSearching, openSearch, toggleAutoSearch } from './search.js';
 import { isFinished, transferForTrack } from './downloads.js';
 import { openIdentify } from './identify.js';
 import { isPlaying, playTrack } from './player.js';
@@ -102,6 +102,9 @@ function statusHtml(track) {
   const transfer = transferForTrack(track.id);
   if (transfer && !isFinished(transfer.state)) {
     const pct = Math.round(transfer.percentComplete);
+    if (transfer.userPresence === 'offline') {
+      return `<button class="track-status-btn failed" data-action="download" title="L'utilisateur qui doit envoyer ce fichier est hors ligne : choisir une autre source">Hors ligne</button>`;
+    }
     const label = /inprogress/i.test(transfer.state) ? `↓ ${pct}%`
       : transfer.attempts ? 'Relance'
         : transfer.placeInQueue > 0 ? `En file (${transfer.placeInQueue}ᵉ)` : 'En file';
@@ -114,11 +117,15 @@ function statusHtml(track) {
     return `<button class="track-download-btn searching" data-action="download" title="Recherche en cours">${SPINNER}</button>`;
   }
 
-  const count = cachedCount(track);
-  const title = count === undefined ? 'Rechercher sur Soulseek'
-    : count === 0 ? 'Aucun résultat en cache : relancer la recherche' : `${count} résultats en cache`;
-  return `<button class="track-download-btn${count ? ' cached' : ''}${count === 0 ? ' empty' : ''}" data-action="download" title="${title}">
-    ${icon(ICONS.download, 16)}${count !== undefined ? `<span class="result-count">${count}</span>` : ''}
+  // Cached search: number of relevant results, green when one is lossless
+  const stats = cachedStats(track);
+  const count = stats?.relevant;
+  const title = !stats ? 'Rechercher sur Soulseek'
+    : count === 0 ? 'Aucun résultat pertinent en cache : relancer la recherche'
+      : `${count} résultat${count > 1 ? 's' : ''} pertinent${count > 1 ? 's' : ''}, meilleur format : ${stats.best}`;
+  const countCls = count === 0 ? '' : isLossless(stats?.best) ? ' lossless' : '';
+  return `<button class="track-download-btn${count ? ' cached' : ''}${count === 0 ? ' empty' : ''}" data-action="download" title="${escapeHtml(title)}">
+    ${icon(ICONS.download, 16)}${stats ? `<span class="result-count${countCls}">${count}</span>` : ''}
   </button>`;
 }
 

@@ -4,11 +4,12 @@
 // so results of another search can never appear in it.
 
 import {
-  $, api, bus, closeModal, DURATION_TOLERANCE_MS, errorMessage, escapeHtml, formatBadge,
-  durationMatch, formatDuration, formatSize, formatTime, icon, ICONS, isLossless, normalizeQuery, openModal,
-  showToast, SOURCE_LABELS, toastError, trackQuery,
+  $, api, bus, DURATION_TOLERANCE_MS, errorMessage, escapeHtml, formatBadge, durationMatch,
+  formatDuration, formatSize, formatTime, icon, ICONS, isLossless, normalizeQuery, openModal,
+  showToast, SOURCE_LABELS, toastError,
 } from './ui.js';
 import { pendingDownloadFor } from './downloads.js';
+import { fallbackQuery, isRelevant, relevanceOf, searchStats, trackQuery } from './query.js';
 
 const AUTO_SEARCH_CONCURRENCY = 3;
 const AUTO_SEARCH_DELAY = 5000;
@@ -17,8 +18,8 @@ const MAX_CACHED_RESULTS = 300; // Same limit as the main-process cache
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-// ─── Cache mirror (counts only, results stay in main) ───────
-const cacheSummary = new Map(); // key -> { count, timestamp }
+// ─── Cache mirror (stats only, results stay in main) ────────
+const cacheSummary = new Map(); // key -> { relevant, best, timestamp }
 
 export async function loadCacheSummary() {
   const summary = await api.searchCache.summary();
@@ -26,9 +27,9 @@ export async function loadCacheSummary() {
   for (const [key, entry] of Object.entries(summary)) cacheSummary.set(key, entry);
 }
 
-/** Cached result count for a track's query, or undefined if not cached. */
-export function cachedCount(track) {
-  return cacheSummary.get(normalizeQuery(trackQuery(track)))?.count;
+/** Cached { relevant, best } for a track's query, or undefined if not cached. */
+export function cachedStats(track) {
+  return cacheSummary.get(normalizeQuery(trackQuery(track)));
 }
 
 // ─── Sessions ───────────────────────────────────────────────
@@ -38,15 +39,47 @@ export function isSearching(track) {
   return sessions.has(normalizeQuery(trackQuery(track)));
 }
 
-/** Start (or join) the search for `query`. `force` restarts it, ignoring the cache. */
-function runSearch(query, { force = false } = {}) {
+/** Run one slskd search and keep `session.results` updated until it completes. */
+async function collect(session, query) {
+  session.activeQuery = query;
+  const { id } = await api.slskd.search(query);
+  session.id = id;
+  if (session.cancelled) {
+    api.slskd.cancelSearch(id).catch(() => {});
+    return;
+  }
+  let loadedCount = 0;
+  for (let tick = 0; !session.cancelled; tick++) {
+    await sleep(tick < 6 ? 500 : 1000);
+    if (session.cancelled) return;
+    // Cheap status poll; full results only when new files arrived
+    const status = await api.slskd.getSearchResults(id, false);
+    session.fileCount = status.fileCount;
+    if (status.isComplete || (status.fileCount > loadedCount && tick % 2 === 1)) {
+      const data = await api.slskd.getSearchResults(id, true);
+      if (session.cancelled) return;
+      loadedCount = status.fileCount;
+      session.results = data.results.slice(0, MAX_CACHED_RESULTS);
+      session.version++;
+    }
+    notify(session);
+    if (status.isComplete) return;
+  }
+}
+
+/**
+ * Start (or join) the search for `query`, made for `track` (relevance).
+ * `force` restarts it, ignoring the cache. When `fallback` is given and the
+ * query finds nothing relevant, the search is retried with it.
+ */
+function runSearch(query, track, { force = false, fallback = '' } = {}) {
   const key = normalizeQuery(query);
   const existing = sessions.get(key);
   if (existing && !force) return existing;
   if (existing) cancelSession(existing);
 
   const session = {
-    query, key, id: null, results: [], version: 0, fileCount: 0,
+    query, key, track, id: null, results: [], version: 0, fileCount: 0,
     complete: false, cancelled: false, error: null,
   };
   sessions.set(key, session);
@@ -54,32 +87,16 @@ function runSearch(query, { force = false } = {}) {
 
   session.promise = (async () => {
     try {
-      const { id } = await api.slskd.search(query);
-      session.id = id;
-      if (session.cancelled) {
-        api.slskd.cancelSearch(id).catch(() => {});
-        return;
-      }
-      let loadedCount = 0;
-      for (let tick = 0; !session.cancelled; tick++) {
-        await sleep(tick < 6 ? 500 : 1000);
-        if (session.cancelled) break;
-        // Cheap status poll; full results only when new files arrived
-        const status = await api.slskd.getSearchResults(id, false);
-        session.fileCount = status.fileCount;
-        if (status.isComplete || (status.fileCount > loadedCount && tick % 2 === 1)) {
-          const data = await api.slskd.getSearchResults(id, true);
-          if (session.cancelled) break;
-          loadedCount = status.fileCount;
-          session.results = data.results.slice(0, MAX_CACHED_RESULTS);
-          session.version++;
-        }
-        notify(session);
-        if (status.isComplete) break;
+      await collect(session, query);
+      if (!session.cancelled && fallback && searchStats(session.results, track).relevant === 0) {
+        session.results = [];
+        session.version++;
+        await collect(session, fallback);
       }
       if (!session.cancelled) {
-        await api.searchCache.set(query, session.results);
-        cacheSummary.set(key, { count: session.results.length, timestamp: Date.now() });
+        const stats = searchStats(session.results, track);
+        await api.searchCache.set(query, session.results, stats);
+        cacheSummary.set(key, { ...stats, timestamp: Date.now() });
       }
     } catch (err) {
       session.error = errorMessage(err);
@@ -122,6 +139,7 @@ let shown = null; // { track, key, session, renderedVersion }
 let currentResults = [];
 let visible = []; // filtered + sorted results currently rendered
 let limit = PAGE_SIZE;
+let showOffTopic = false; // results whose file name lacks the title
 const startedDownloads = new Set(); // "username\0filename" started from the modal
 
 async function ensureConnected() {
@@ -170,6 +188,7 @@ async function showQuery(query, { force = false } = {}) {
 
   // Never leave the previous query's results on screen (or clickable)
   limit = PAGE_SIZE;
+  showOffTopic = false;
   currentResults = [];
   visible = [];
   resultsList.innerHTML = LOADING_HTML;
@@ -182,28 +201,40 @@ async function showQuery(query, { force = false } = {}) {
     if (cached) {
       currentResults = cached.results;
       renderResults(false);
-      statusEl.textContent = `${cached.results.length} résultats · en cache (${formatTime(cached.timestamp)})`;
+      statusEl.textContent = `${resultCount()} · en cache (${formatTime(cached.timestamp)})`;
       return;
     }
   }
 
-  view.session = runSearch(query, { force });
+  // Only the track's own query gets the title-only second try
+  const track = view.track;
+  const fallback = key === normalizeQuery(trackQuery(track)) ? fallbackQuery(track) : '';
+  view.session = runSearch(query, track, { force, fallback });
   renderSession(view.session);
 }
 
+/** "5 résultats pertinents (sur 34)" for the results on screen. */
+function resultCount() {
+  const words = relevanceOf(shown.track);
+  const relevant = currentResults.filter((r) => isRelevant(r, words)).length;
+  const label = `${relevant} résultat${relevant > 1 ? 's' : ''} pertinent${relevant > 1 ? 's' : ''}`;
+  return relevant === currentResults.length ? label : `${label} (sur ${currentResults.length})`;
+}
+
 function renderSession(session) {
-  if (session.error) {
-    statusEl.textContent = `Erreur : ${session.error}`;
-  } else if (session.complete) {
-    statusEl.textContent = session.cancelled ? 'Recherche annulée' : `${session.results.length} résultats`;
-  } else {
-    statusEl.textContent = `Recherche... ${session.fileCount} fichiers`;
-  }
   // Rebuild the rows only when results changed (keeps clicks and buttons stable)
   if (shown.renderedVersion !== session.version || session.complete) {
     shown.renderedVersion = session.version;
     currentResults = session.results;
     renderResults(!session.complete);
+  }
+  const retry = session.activeQuery !== session.query ? ` · 2ᵉ essai avec « ${session.activeQuery} »` : '';
+  if (session.error) {
+    statusEl.textContent = `Erreur : ${session.error}`;
+  } else if (session.complete) {
+    statusEl.textContent = session.cancelled ? 'Recherche annulée' : `${resultCount()}${retry}`;
+  } else {
+    statusEl.textContent = `Recherche... ${session.fileCount} fichiers${retry}`;
   }
 }
 
@@ -238,13 +269,20 @@ function applyFilters(results) {
 const downloadKey = (r) => `${r.username}\u0000${r.filename}`;
 
 function renderResults(searching) {
-  const all = applyFilters([...currentResults]);
+  // Off-topic results (other files of the same folder, .nfo, images…) are folded
+  const words = relevanceOf(shown.track);
+  const relevant = currentResults.filter((r) => isRelevant(r, words));
+  const offTopic = currentResults.filter((r) => !isRelevant(r, words));
+  const all = [...applyFilters(relevant), ...(showOffTopic ? applyFilters(offTopic) : [])];
   visible = all.slice(0, limit);
+  const offTopicToggle = offTopic.length
+    ? `<button class="btn-secondary load-more" id="btn-off-topic">${showOffTopic ? 'Masquer' : 'Afficher aussi'} les ${offTopic.length} résultats hors sujet</button>`
+    : '';
 
   if (visible.length === 0) {
     resultsList.innerHTML = searching
       ? LOADING_HTML
-      : `<div class="slskd-no-results"><p>${currentResults.length ? 'Aucun résultat avec ces filtres' : 'Aucun résultat trouvé'}</p></div>`;
+      : `<div class="slskd-no-results"><p>${relevant.length ? 'Aucun résultat avec ces filtres' : 'Aucun résultat pertinent'}</p></div>${offTopicToggle}`;
     return;
   }
 
@@ -258,7 +296,8 @@ function renderResults(searching) {
     const noSlot = r.hasFreeUploadSlot === false; // Unknown in older cached results
     const userInfo = `${noSlot ? 'Pas de slot libre : le téléchargement attendra dans sa file' : 'Slot libre'}${r.queueLength ? ` · file d'attente : ${r.queueLength}` : ''} · ${Math.round(r.uploadSpeed / 1024)} Ko/s`;
 
-    return `<div class="slskd-result-row">
+    const off = !isRelevant(r, words);
+    return `<div class="slskd-result-row${off ? ' off-topic' : ''}" ${off ? 'title="Le nom du fichier ne contient pas le titre"' : ''}>
       <span class="result-filename" title="${escapeHtml(r.filename)}">${escapeHtml(name)}</span>
       <span class="result-user" title="${escapeHtml(userInfo)}">${noSlot ? '<span class="no-slot">●</span>' : ''}<span class="result-username">${escapeHtml(r.username)}</span></span>
       <span class="result-format">${formatBadge(r.extension)}</span>
@@ -274,6 +313,7 @@ function renderResults(searching) {
   if (all.length > visible.length) {
     rows.push(`<button class="btn-secondary load-more" id="btn-load-more">Afficher plus (${all.length - visible.length} restants)</button>`);
   }
+  rows.push(offTopicToggle);
   resultsList.innerHTML = rows.join('');
 }
 
@@ -284,6 +324,11 @@ function rerender() {
 resultsList.addEventListener('click', async (e) => {
   if (e.target.closest('#btn-load-more')) {
     limit += PAGE_SIZE;
+    rerender();
+    return;
+  }
+  if (e.target.closest('#btn-off-topic')) {
+    showOffTopic = !showOffTopic;
     rerender();
     return;
   }
@@ -347,14 +392,13 @@ export async function toggleAutoSearch(tracks) {
   try {
     if (!(await ensureConnected())) return;
     const keys = new Set();
-    const queue = [];
+    const queue = []; // tracks to search
     for (const track of tracks) {
       if (track.format || !track.playlistIds) continue;
-      const query = trackQuery(track);
-      const key = normalizeQuery(query);
+      const key = normalizeQuery(trackQuery(track));
       if (keys.has(key) || cacheSummary.has(key) || sessions.has(key)) continue;
       keys.add(key);
-      queue.push(query);
+      queue.push(track);
     }
     if (queue.length === 0) {
       showToast('Toutes les pistes affichées ont déjà des résultats en cache', 'success');
@@ -379,9 +423,10 @@ export async function toggleAutoSearch(tracks) {
 async function autoWorker(run, initialDelay) {
   await sleep(initialDelay);
   while (auto === run && run.queue.length > 0) {
-    const query = run.queue.shift();
+    const track = run.queue.shift();
+    const query = trackQuery(track);
     if (!cacheSummary.has(normalizeQuery(query))) {
-      const session = runSearch(query);
+      const session = runSearch(query, track, { fallback: fallbackQuery(track) });
       run.sessions.add(session);
       await session.promise;
       run.sessions.delete(session);

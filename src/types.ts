@@ -126,6 +126,8 @@ export interface SlskdSearchResult {
   quality: number;
 }
 
+export type UserPresence = "online" | "away" | "offline";
+
 /** A download as shown in the UI, annotated with the playlist track it is for */
 export interface Transfer {
   username: string;
@@ -140,5 +142,7 @@ export interface Transfer {
   attempts?: number;
   /** Position in the remote user's upload queue (last known, 0 = unknown) */
   placeInQueue?: number;
+  /** Whether the remote user is connected (checked while we wait in their queue) */
+  userPresence?: UserPresence;
   trackId?: string;
 }

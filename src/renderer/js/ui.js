@@ -46,11 +46,6 @@ export const isLossless = (format) => LOSSLESS.includes((format || '').toUpperCa
 /** Above this gap, a file's duration is flagged as another version of the track. */
 export const DURATION_TOLERANCE_MS = 15000;
 
-/** Soulseek query for a track: "Artist Title". */
-export function trackQuery(track) {
-  return `${track.artist} ${track.title}`.trim();
-}
-
 export function normalizeQuery(query) {
   return query.toLowerCase().trim().replace(/\s+/g, ' ');
 }

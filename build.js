@@ -17,6 +17,7 @@ execSync("npx tsc", { stdio: "inherit" });
 console.log("Copying renderer files...");
 fs.cpSync(path.join(__dirname, "src", "renderer"), path.join(distDir, "renderer"), {
   recursive: true,
+  filter: (src) => !src.endsWith(".test.js"),
 });
 
 console.log("Build complete!");

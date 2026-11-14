@@ -84,6 +84,10 @@ export const downloadsStore = new Store<{ pending: Record<string, PendingDownloa
 export interface CachedSearchEntry {
   file: string;
   count: number;
+  /** Audio files whose name contains the track title (absent in old entries) */
+  relevant?: number;
+  /** Best format among relevant results, e.g. "FLAC" */
+  best?: string;
   timestamp: number;
 }
 

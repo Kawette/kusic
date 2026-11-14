@@ -7,7 +7,7 @@
 import fs from "fs";
 import path from "path";
 import type { SlskdAPI } from "../services/slskd/index.js";
-import type { Transfer } from "../types.js";
+import type { Transfer, UserPresence } from "../types.js";
 import { downloadsStore, type PendingDownload } from "./store.js";
 import type { Library } from "./library/library.js";
 import { listAudioFiles } from "./library/files.js";
@@ -16,8 +16,8 @@ import { isInside, slskdLocalPath } from "./library/naming.js";
 const POLL_INTERVAL = 2000;
 const MAX_ATTEMPTS = 10;
 const STALE_AFTER = 7 * 24 * 60 * 60 * 1000;
-/** How often to ask a remote user for our place in their queue */
-const QUEUE_POSITION_INTERVAL = 60_000;
+/** How often to ask a remote user for our place in their queue and their presence */
+const REMOTE_QUEUE_INTERVAL = 60_000;
 
 export type DownloadEvent =
   | { type: "placed"; trackId: string; filePath: string }
@@ -61,6 +61,8 @@ function flattenTransfers(users: RawDownloads[]): TrackedTransfer[] {
   );
 }
 
+const isRemotelyQueued = (t: Transfer) => /queued/i.test(t.state) && /remotely/i.test(t.state);
+
 const sizeOf = (p: string) => fs.promises.stat(p).then((s) => s.size, () => -1);
 
 export class DownloadTracker {
@@ -71,6 +73,8 @@ export class DownloadTracker {
   private lastPushed = "";
   /** Transfer id -> when its queue position was last requested */
   private positionAskedAt = new Map<string, number>();
+  /** Username -> last known presence and when it was checked */
+  private presence = new Map<string, { value: UserPresence; at: number }>();
   /** Single source of truth, written through to downloads.json */
   private pending: Record<string, PendingDownload> = downloadsStore.get("pending");
 
@@ -159,29 +163,47 @@ export class DownloadTracker {
     const transfers: Transfer[] = raw.map(({ endedAt: _endedAt, ...t }) => ({
       ...t,
       trackId: this.pending[keyOf(t.username, t.filename)]?.trackId,
+      userPresence: isRemotelyQueued(t) ? this.presence.get(t.username)?.value : undefined,
     }));
     this.push(transfers);
 
-    this.refreshQueuePositions(api, raw);
+    this.refreshRemoteQueues(api, raw);
     await this.processFinished(raw);
     this.pruneStale(raw);
     return transfers;
   }
 
-  /** Ask (in the background, at most once a minute each) where we are in remote queues. */
-  private refreshQueuePositions(api: SlskdAPI, transfers: Transfer[]): void {
+  /**
+   * For downloads waiting in someone's queue, ask in the background (at most
+   * once a minute) for our position and whether that user is still online.
+   */
+  private refreshRemoteQueues(api: SlskdAPI, transfers: Transfer[]): void {
     const now = Date.now();
-    const queued = transfers.filter((t) => /queued/i.test(t.state) && /remotely/i.test(t.state));
+    const queued = transfers.filter(isRemotelyQueued);
+
     for (const t of queued) {
-      if (now - (this.positionAskedAt.get(t.id) ?? 0) < QUEUE_POSITION_INTERVAL) continue;
+      if (now - (this.positionAskedAt.get(t.id) ?? 0) < REMOTE_QUEUE_INTERVAL) continue;
       this.positionAskedAt.set(t.id, now);
       api.refreshPlaceInQueue(t.username, t.id).catch(() => {
         // The remote user may be offline; the last known position is kept
       });
     }
-    // Forget transfers that left the remote queue
+
+    for (const username of new Set(queued.map((t) => t.username))) {
+      const known = this.presence.get(username);
+      if (known && now - known.at < REMOTE_QUEUE_INTERVAL) continue;
+      this.presence.set(username, { value: known?.value ?? "online", at: now });
+      api
+        .getUserPresence(username)
+        .then((value) => this.presence.set(username, { value, at: now }))
+        .catch(() => {});
+    }
+
+    // Forget transfers and users that left the remote queues
     const ids = new Set(queued.map((t) => t.id));
     for (const id of this.positionAskedAt.keys()) if (!ids.has(id)) this.positionAskedAt.delete(id);
+    const users = new Set(queued.map((t) => t.username));
+    for (const user of this.presence.keys()) if (!users.has(user)) this.presence.delete(user);
   }
 
   private async processFinished(transfers: TrackedTransfer[]): Promise<void> {

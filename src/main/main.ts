@@ -14,6 +14,7 @@ import {
   getCacheSummary,
   pruneSearchCache,
   setCachedSearch,
+  type SearchStats,
 } from "./search-cache.js";
 import { SpotifyService } from "../services/spotify.js";
 import { SlskdManager } from "../services/slskd/index.js";
@@ -285,8 +286,10 @@ ipcMain.handle("show-in-folder", (_, filePath: string) => {
 // ─── Search cache ──────────────────────────────────────────────
 
 ipcMain.handle("search-cache-get", (_, query: string) => getCachedSearch(query));
-ipcMain.handle("search-cache-set", (_, query: string, results: SlskdSearchResult[]) =>
-  setCachedSearch(query, results),
+ipcMain.handle(
+  "search-cache-set",
+  (_, query: string, results: SlskdSearchResult[], stats: SearchStats) =>
+    setCachedSearch(query, results, stats),
 );
 ipcMain.handle("search-cache-summary", () => getCacheSummary());
 

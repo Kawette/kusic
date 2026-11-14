@@ -20,10 +20,13 @@ let rendered = [];
 let renderedSignature = '';
 
 export const isFinished = (state) => /completed/i.test(state || '');
+const isRemotelyQueued = (t) => /queued/i.test(t.state) && /remotely/i.test(t.state);
 const isSucceeded = (state) => /succeeded/i.test(state || '');
 const isFailed = (state) => isFinished(state) && !isSucceeded(state);
 
-function stateDisplay({ state, attempts, placeInQueue }) {
+const PRESENCE_LABELS = { offline: 'hors ligne', away: 'absent' };
+
+function stateDisplay({ state, attempts, placeInQueue, userPresence }) {
   const s = (state || '').toLowerCase();
   // slskd waits before retrying a failed attempt; the transfer is queued again
   if (attempts > 0 && !s.includes('completed') && !s.includes('inprogress')) {
@@ -36,7 +39,12 @@ function stateDisplay({ state, attempts, placeInQueue }) {
   if (s.includes('completed')) return { label: 'Erreur', cls: 'state-error' };
   if (s.includes('inprogress') || s.includes('initializing')) return { label: 'En cours', cls: 'state-active' };
   if (s.includes('queued') && s.includes('remote')) {
-    return { label: placeInQueue > 0 ? `File distante (${placeInQueue}ᵉ)` : 'File distante', cls: 'state-queued' };
+    const place = placeInQueue > 0 ? ` (${placeInQueue}ᵉ)` : '';
+    const presence = PRESENCE_LABELS[userPresence];
+    return {
+      label: `File distante${place}${presence ? ` · ${presence}` : ''}`,
+      cls: userPresence === 'offline' ? 'state-error' : 'state-queued',
+    };
   }
   if (s.includes('queued') && s.includes('local')) return { label: 'File locale', cls: 'state-queued' };
   if (s.includes('queued')) return { label: 'En attente', cls: 'state-queued' };
@@ -105,7 +113,7 @@ export function render() {
     const actions = [
       running && `<button class="dl-action-btn dl-cancel" title="Annuler" data-action="cancel">${icon(ICONS.close)}</button>`,
       failedRow && `<button class="dl-action-btn dl-retry" title="Réessayer avec la même source" data-action="retry">${icon(ICONS.retry)}</button>`,
-      failedRow && t.trackId && `<button class="dl-action-btn dl-retry" title="Choisir une autre source" data-action="other">${icon(ICONS.search)}</button>`,
+      (failedRow || isRemotelyQueued(t)) && t.trackId && `<button class="dl-action-btn dl-retry" title="Choisir une autre source" data-action="other">${icon(ICONS.search)}</button>`,
       failedRow && `<button class="dl-action-btn dl-cancel" title="Retirer de la liste" data-action="remove">${icon(ICONS.close)}</button>`,
     ].filter(Boolean).join('');
 

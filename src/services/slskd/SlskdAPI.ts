@@ -1,6 +1,6 @@
 // ─── slskd REST API Client ──────────────────────────────────
 import axios, { AxiosInstance } from "axios";
-import type { SlskdSearchResult } from "../../types.js";
+import type { SlskdSearchResult, UserPresence } from "../../types.js";
 
 interface ServerState {
   state: string;
@@ -176,6 +176,13 @@ export class SlskdAPI {
     await this.client.get(
       `/api/v0/transfers/downloads/${encodeURIComponent(username)}/${encodeURIComponent(id)}/position`,
     );
+  }
+
+  /** Whether a Soulseek user is online, away or offline. */
+  async getUserPresence(username: string): Promise<UserPresence> {
+    const { data } = await this.client.get(`/api/v0/users/${encodeURIComponent(username)}/status`);
+    const presence = String(data?.presence ?? "").toLowerCase();
+    return presence === "online" || presence === "away" ? presence : "offline";
   }
 
   async getDownloads(): Promise<unknown[]> {
