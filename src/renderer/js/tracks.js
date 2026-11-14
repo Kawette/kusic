@@ -1,7 +1,7 @@
 // ─── Tracks view ────────────────────────────────────────────
 
 import {
-  $, api, bus, errorMessage, escapeHtml, formatBadge, formatDuration, icon, ICONS,
+  $, api, bus, errorMessage, escapeHtml, formatBadge, formatDuration, formatSize, icon, ICONS,
   isLossless, qualityLabel, showToast, SOURCE_LABELS, SPINNER, toastError, withBusyButton,
 } from './ui.js';
 import { cachedCount, isSearching, openSearch, toggleAutoSearch } from './search.js';
@@ -84,9 +84,16 @@ function statusHtml(track) {
   }
 
   if (track.format) {
-    const quality = qualityLabel(track);
-    return `${formatBadge(track.format)}${quality ? `<span class="quality-text">${escapeHtml(quality)}</span>` : ''}
-      ${!isLossless(track.format) && track.playlistIds ? `<button class="track-upgrade-btn" data-action="upgrade" title="Chercher une meilleure qualité (FLAC)">${icon(ICONS.upgrade, 12)}</button>` : ''}`;
+    const details = [
+      [track.format.toUpperCase(), qualityLabel(track), track.bitDepth && `${track.bitDepth} bits`]
+        .filter(Boolean).join(' · '),
+      formatSize(track.fileSize),
+      track.filePath?.split(/[\\/]/).pop(),
+    ].filter((line) => line && line !== '—').join('\n');
+    const upgrade = !isLossless(track.format) && track.playlistIds
+      ? `<button class="track-download-btn" data-action="upgrade" title="Chercher une meilleure qualité (FLAC)">${icon(ICONS.upgrade, 16)}</button>`
+      : '';
+    return `${upgrade}<span class="quality-badge" data-tooltip="${escapeHtml(details)}">${formatBadge(track.format)}</span>`;
   }
 
   if (!track.playlistIds) return '';

@@ -474,12 +474,6 @@ a:hover {
   gap: 6px;
 }
 
-.track-actions .quality-text {
-  color: var(--text-muted);
-  font-size: 10px;
-  white-space: nowrap;
-}
-
 .track-download-btn {
   background: transparent;
   border: none;
@@ -1668,17 +1662,30 @@ a:hover {
   font-variant-numeric: tabular-nums;
 }
 
-.track-upgrade-btn {
+/* Quality details shown on hover, to the left of the format badge */
+.quality-badge {
+  position: relative;
   display: inline-flex;
-  padding: 2px;
-  border: none;
-  background: none;
-  color: var(--text-muted);
-  cursor: pointer;
+  cursor: default;
 }
 
-.track-upgrade-btn:hover {
-  color: var(--accent);
+.quality-badge:hover::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  right: calc(100% + 8px);
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 10;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-active);
+  color: var(--text-primary);
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: pre;
+  pointer-events: none;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
 }
 
 button.identify-icon {
