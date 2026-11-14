@@ -113,7 +113,6 @@ const targetEl = $('#slskd-target');
 const filters = {
   format: $('#result-format'),
   bitrate: $('#result-bitrate'),
-  freeSlots: $('#result-free-slots'),
   sort: $('#result-sort'),
 };
 const LOADING_HTML = '<div class="slskd-loading"><p>Recherche sur le réseau Soulseek...</p></div>';
@@ -147,7 +146,6 @@ export async function openSearch(track, options = {}) {
   shown = { track };
   filters.format.value = options.format || '';
   filters.bitrate.value = '0';
-  filters.freeSlots.checked = false;
   filters.sort.value = 'duration';
   queryInput.value = trackQuery(track);
   // The playlist track, to compare results against
@@ -225,8 +223,6 @@ function applyFilters(results) {
     if (format === 'lossless' && !lossless) return false;
     if (format && format !== 'lossless' && r.extension !== format) return false;
     if (minBitrate && !lossless && (r.bitRate || 0) < minBitrate) return false;
-    // Older cached results have no slot info: keep them
-    if (filters.freeSlots.checked && r.hasFreeUploadSlot === false) return false;
     return true;
   });
 

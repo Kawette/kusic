@@ -33,10 +33,10 @@ export function icon(paths, size = 14) {
 export const SPINNER = '<svg class="spinner" width="14" height="14" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="3" stroke-dasharray="30 70"/></svg>';
 
 export const SOURCE_LABELS = {
-  spotify: '● Spotify',
-  soundcloud: '● SoundCloud',
-  local: '● Local',
-  unknown: '● Inconnu',
+  spotify: 'Spotify',
+  soundcloud: 'SoundCloud',
+  local: 'Local',
+  unknown: 'Inconnu',
 };
 
 export const LOSSLESS = ['FLAC', 'WAV', 'ALAC', 'APE', 'AIFF'];
