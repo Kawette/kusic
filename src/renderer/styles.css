@@ -744,6 +744,12 @@ a:hover {
   flex: 1;
 }
 
+.setting-maintenance {
+  margin: 20px 0 0;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
 .setting-cache-row {
   display: flex;
   align-items: center;
@@ -1704,9 +1710,12 @@ a:hover {
   color: var(--danger);
 }
 
+.status-tag.waiting {
+  background: var(--bg-active);
+  color: var(--text-secondary);
+}
+
 .track-progress {
-  display: inline-flex;
-  align-items: center;
   color: var(--accent);
   font-size: 11px;
   font-variant-numeric: tabular-nums;

@@ -124,9 +124,10 @@ function statusHtml(track) {
     if (transfer.userPresence === 'offline') {
       return `<span class="status-tag failed" title="L'utilisateur qui doit envoyer ce fichier est hors ligne">Hors ligne</span>${otherSourceButton}`;
     }
-    // Waiting (queue, retry…): just a spinner, the details are in the tooltip and the downloads view
+    // Waiting: a plain tag (the spinner means a search); in someone's queue, another source can be picked
     if (!isTransferring(transfer)) {
-      return `<span class="track-progress" title="${escapeHtml(waitingLabel(transfer))}">${SPINNER}</span>`;
+      const queued = /remotely/i.test(transfer.state);
+      return `<span class="status-tag waiting">${escapeHtml(waitingLabel(transfer))}</span>${queued ? otherSourceButton : ''}`;
     }
     return `<span class="track-progress" title="${escapeHtml(transfer.state)}">↓ ${pct}%</span>`;
   }
