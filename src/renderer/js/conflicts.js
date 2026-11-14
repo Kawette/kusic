@@ -5,9 +5,9 @@
 
 import {
   $, api, bus, closeModal, durationBand, escapeHtml, formatBadge, formatDuration, formatSize,
-  formatTime, isPlayable, openModal, qualityLabel, showToast, toastError, withBusyButton,
+  formatTime, icon, ICONS, isPlayable, openModal, qualityLabel, showToast, toastError, withBusyButton,
 } from './ui.js';
-import { playFile } from './player.js';
+import { isPlaying, playFile } from './player.js';
 
 const modal = $('#conflict-modal');
 const body = $('#conflict-body');
@@ -31,7 +31,7 @@ function fileCard(title, file, track) {
     </dl>
     <p class="conflict-path" title="${escapeHtml(file.path)}">${escapeHtml(file.path)}</p>
     <div class="conflict-buttons">
-      ${isPlayable(file.format) ? `<button class="btn-secondary btn-small" data-play="${escapeHtml(file.path)}">Écouter</button>` : ''}
+      ${isPlayable(file.format) ? `<button class="player-btn" data-play="${escapeHtml(file.path)}" title="Écouter"></button>` : ''}
       <button class="btn-secondary btn-small" data-show="${escapeHtml(file.path)}">Afficher dans le dossier</button>
     </div>
   </div>`;
@@ -66,8 +66,19 @@ async function openConflict(id) {
       <button class="btn-primary" data-choice="replace">${duplicate ? 'Garder le doublon' : 'Remplacer par le nouveau'}</button>
     </div>
     <p class="setting-help">Le fichier écarté est envoyé à la corbeille Windows.</p>`;
+  renderPlayButtons();
   openModal(modal, () => { current = null; });
 }
+
+function renderPlayButtons() {
+  for (const btn of body.querySelectorAll('[data-play]')) {
+    const playing = isPlaying(btn.dataset.play);
+    btn.innerHTML = icon(playing ? ICONS.pause : ICONS.play, 14);
+    btn.title = playing ? 'Pause' : 'Écouter';
+  }
+}
+
+bus.on('player:changed', renderPlayButtons);
 
 body.addEventListener('click', async (e) => {
   const show = e.target.closest('[data-show]');

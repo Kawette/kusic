@@ -922,6 +922,17 @@ a:hover {
   background: var(--accent-hover);
 }
 
+/* Orange variant, for actions on warnings (conflicts) */
+.btn-small.btn-warning {
+  background: var(--warning);
+  border-color: var(--warning);
+  color: #1a1206;
+}
+
+.btn-small.btn-warning:hover {
+  filter: brightness(1.1);
+}
+
 .slskd-binary-status {
   display: flex;
   align-items: center;
@@ -1651,32 +1662,25 @@ a:hover {
   color: var(--accent);
 }
 
-/* Clickable status tags, same look as the source tags */
-.track-status-btn {
+/* Status tags in the track list, same look as the source tags */
+.status-tag {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
   padding: 3px 8px;
-  border: none;
   border-radius: 20px;
-  font: inherit;
   font-size: 11px;
   font-weight: 600;
-  cursor: pointer;
+  white-space: nowrap;
 }
 
-.track-status-btn.conflict {
+.status-tag.conflict {
   background: rgba(243, 156, 18, 0.15);
   color: var(--warning);
 }
 
-.track-status-btn.failed {
+.status-tag.failed {
   background: rgba(231, 76, 60, 0.15);
   color: var(--danger);
-}
-
-.track-status-btn:hover {
-  filter: brightness(1.2);
 }
 
 .track-progress {
@@ -2165,6 +2169,7 @@ button.identify-result-row {
 
 .conflict-buttons {
   display: flex;
+  align-items: center;
   gap: 8px;
 }
 

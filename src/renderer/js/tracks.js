@@ -95,10 +95,12 @@ export function setPlaylistOptions(playlists) {
 
 // ─── Rendering ──────────────────────────────────────────────
 
+const otherSourceButton = `<button class="track-download-btn" data-action="download" title="Choisir une autre source">${icon(ICONS.download, 16)}</button>`;
+
 /** The "Fichier" column: quality, download state, conflict or search button. */
 function statusHtml(track) {
   if (track.conflictId) {
-    return `<button class="track-status-btn conflict" data-action="conflict" title="Deux fichiers pour cette piste : cliquez pour comparer et choisir">Conflit</button>`;
+    return `<span class="status-tag conflict" title="Deux fichiers pour cette piste : menu ⋯ → Résoudre le conflit">Conflit</span>`;
   }
 
   if (track.format) {
@@ -120,13 +122,13 @@ function statusHtml(track) {
   if (transfer && !isFinished(transfer.state)) {
     const pct = Math.round(transfer.percentComplete);
     if (transfer.userPresence === 'offline') {
-      return `<button class="track-status-btn failed" data-action="download" title="L'utilisateur qui doit envoyer ce fichier est hors ligne : choisir une autre source">Hors ligne</button>`;
+      return `<span class="status-tag failed" title="L'utilisateur qui doit envoyer ce fichier est hors ligne">Hors ligne</span>${otherSourceButton}`;
     }
     const label = isTransferring(transfer) ? `↓ ${pct}%` : waitingLabel(transfer);
     return `<span class="track-progress" title="${escapeHtml(transfer.state)}">${label}</span>`;
   }
   if (transfer) {
-    return `<button class="track-status-btn failed" data-action="download" title="Le téléchargement a échoué : choisir une autre source">Échec</button>`;
+    return `<span class="status-tag failed" title="Le téléchargement a échoué">Échec</span>${otherSourceButton}`;
   }
   if (isSearching(track)) {
     return `<button class="track-download-btn searching" data-action="download" title="Recherche en cours">${SPINNER}</button>`;
@@ -239,7 +241,6 @@ trackList.addEventListener('click', (e) => {
   if (action === 'upgrade') openSearch(track, { format: 'flac' }).catch(toastError);
   if (action === 'identify') openIdentify(track).catch(toastError);
   if (action === 'play') playTrack(track);
-  if (action === 'conflict') bus.emit('conflict:open', track.conflictId);
   if (action === 'menu') {
     const rect = actionEl.getBoundingClientRect();
     showTrackMenu(track, rect.right, rect.bottom);
@@ -256,6 +257,9 @@ trackList.addEventListener('contextmenu', (e) => {
 /** Per-track actions; anything destructive asks for confirmation. */
 function showTrackMenu(track, x, y) {
   const items = [];
+  if (track.conflictId) {
+    items.push({ label: 'Résoudre le conflit…', action: () => bus.emit('conflict:open', track.conflictId) });
+  }
   if (track.playlistIds) {
     items.push({ label: 'Rechercher sur Soulseek', action: () => openSearch(track).catch(toastError) });
   }
