@@ -48,9 +48,13 @@ export class SlskdConfig {
         url_base: "/",
         authentication: { disabled: false },
       },
-      global: {
+      transfers: {
         upload: { slots: 5 },
-        download: { slots: 10 },
+        download: {
+          slots: 10,
+          // Failed downloads are retried and partial files resumed by slskd
+          retry: { partial: "resume", attempts: 3, delay: 5000, max_delay: 60000 },
+        },
       },
       retention: {
         transfers: {

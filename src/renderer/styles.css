@@ -1939,8 +1939,8 @@ button.identify-result-row {
 /* ─── Track menu, matches ────────────────────────────────────── */
 /* "Inconnu" in another color when a playlist track matches the file */
 .source-badge.unknown.matched {
-  background: rgba(38, 198, 218, 0.15);
-  color: #4dd0e1;
+  background: rgba(108, 92, 231, 0.2);
+  color: var(--accent-hover);
 }
 
 .context-menu {

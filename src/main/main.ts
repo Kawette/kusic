@@ -45,6 +45,7 @@ const downloads = new DownloadTracker(
   (event) => send("download-event", event),
 );
 
+slskd.onBinaryProgress = (progress) => send("slskd-download-progress", progress);
 slskd.onStateChange = () => {
   if (slskd.isRunning) downloads.start();
   else downloads.stop();
@@ -299,9 +300,7 @@ ipcMain.handle("slskd-check-platform", () => ({
 
 ipcMain.handle("slskd-get-version", () => slskd.getVersionInfo());
 
-ipcMain.handle("slskd-download-binary", () =>
-  slskd.downloadBinary((progress) => send("slskd-download-progress", progress)),
-);
+ipcMain.handle("slskd-download-binary", () => slskd.downloadBinary());
 
 ipcMain.handle("slskd-start", async () => {
   await slskd.start(store.get("soulseek"), store.get("slskdApiKey"));

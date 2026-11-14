@@ -12,7 +12,8 @@ import { SlskdConfig } from "./SlskdConfig.js";
 import { SlskdAPI } from "./SlskdAPI.js";
 import type { SlskdStatus, SoulseekConfig } from "../../types.js";
 
-const SLSKD_VERSION = "0.24.5";
+// Pinned: Kusic installs exactly this release (and replaces any other)
+const SLSKD_VERSION = "0.26.2";
 const WEB_PORT = 5030;
 const LISTEN_PORT = 50300;
 const BASE_URL = `http://127.0.0.1:${WEB_PORT}`;
@@ -75,6 +76,10 @@ export class SlskdManager {
   lastError = "";
   /** Called when the process exits or becomes ready */
   onStateChange: () => void = () => {};
+  /** Download progress of the slskd binary (0-100) */
+  onBinaryProgress: (percent: number) => void = () => {};
+  /** True while the pinned slskd version is being installed before a start */
+  private updating = false;
 
   private resourcesPath = path.join(app.getPath("userData"), "slskd");
   private binDir = path.join(
@@ -124,13 +129,19 @@ export class SlskdManager {
     return this.getVersionInfo().installed;
   }
 
-  async downloadBinary(onProgress: (percent: number) => void = () => {}): Promise<void> {
+  async downloadBinary(): Promise<void> {
     if (!this.isPlatformSupported()) {
       throw new Error("Seul Windows est supporté actuellement.");
     }
     if (this.state !== "stopped") {
       throw new Error("Arrêtez slskd avant de le mettre à jour");
     }
+    await this.installBinary();
+  }
+
+  /** Download the pinned release and replace the installed one (old files deleted). */
+  private async installBinary(): Promise<void> {
+    const onProgress = this.onBinaryProgress;
 
     const target = process.arch === "arm64" ? "win-arm64" : "win-x64";
     const url = `https://github.com/slskd/slskd/releases/download/${SLSKD_VERSION}/slskd-${SLSKD_VERSION}-${target}.zip`;
@@ -217,6 +228,17 @@ export class SlskdManager {
 
     try {
       await this.killOrphan();
+      // Another version installed: switch to the pinned one before starting
+      if (this.getVersionInfo().updateAvailable) {
+        console.log(`[slskd] Installing pinned version ${SLSKD_VERSION}`);
+        this.updating = true;
+        this.onStateChange();
+        try {
+          await this.installBinary();
+        } finally {
+          this.updating = false;
+        }
+      }
       if (await isPortInUse(WEB_PORT)) {
         throw new Error(`Le port ${WEB_PORT} est déjà utilisé par une autre application`);
       }
@@ -376,7 +398,12 @@ export class SlskdManager {
 
   async getStatus(): Promise<SlskdStatus> {
     if (this.state === "starting") {
-      return { running: false, connected: false, starting: true };
+      return {
+        running: false,
+        connected: false,
+        starting: true,
+        state: this.updating ? `Mise à jour de slskd vers v${SLSKD_VERSION}...` : undefined,
+      };
     }
     const api = this.api;
     if (!api) {

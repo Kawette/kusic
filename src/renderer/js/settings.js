@@ -144,12 +144,12 @@ async function checkSlskdBinary() {
     $('#slskd-binary-text').textContent = `slskd v${info.version} non installé`;
     btn.textContent = 'Télécharger slskd';
   } else if (info.updateAvailable) {
-    $('#slskd-binary-text').textContent = `slskd v${info.installedVersion || '?'} installé, v${info.version} disponible`;
-    btn.textContent = 'Mettre à jour';
+    // Installed automatically at the next start of slskd
+    $('#slskd-binary-text').textContent = `slskd v${info.installedVersion || '?'} installé : passage à la v${info.version} au prochain démarrage`;
   } else {
     $('#slskd-binary-text').textContent = `✓ slskd v${info.version} installé`;
   }
-  btn.hidden = info.installed && !info.updateAvailable;
+  btn.hidden = info.installed;
 }
 
 $('#btn-download-slskd').addEventListener('click', async () => {
@@ -187,7 +187,7 @@ function renderStatus(status) {
     label = `Connecté${status.username ? ` (${status.username})` : ''}`;
     cls = 'connected';
   } else if (status.starting) {
-    label = 'Démarrage de slskd...';
+    label = status.state || 'Démarrage de slskd...';
     cls = 'running';
   } else if (status.connecting) {
     label = 'Connexion au réseau...';
