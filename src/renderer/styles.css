@@ -2098,7 +2098,9 @@ button.identify-result-row {
 
 .player {
   position: fixed;
-  left: 244px;
+  /* Centered in the content area, right of the 220px sidebar */
+  left: calc(220px + (100vw - 220px) / 2);
+  transform: translateX(-50%);
   bottom: 24px;
   z-index: 250;
   display: flex;
