@@ -118,22 +118,26 @@ function statusHtml(track) {
 
   if (!track.playlistIds) return '';
 
+  // A search running for the track (even for another source) shows on its button
+  const searching = isSearching(track);
+  const searchButton = searching
+    ? `<button class="track-download-btn searching" data-action="download" title="Recherche en cours">${SPINNER}</button>`
+    : otherSourceButton;
   const transfer = transferForTrack(track.id);
   if (transfer && !isFinished(transfer.state)) {
     const pct = Math.round(transfer.percentComplete);
     if (transfer.userPresence === 'offline') {
-      return `<span class="status-tag failed" title="L'utilisateur qui doit envoyer ce fichier est hors ligne">Hors ligne</span>${otherSourceButton}`;
+      return `<span class="status-tag failed" title="L'utilisateur qui doit envoyer ce fichier est hors ligne">Hors ligne</span>${searchButton}`;
     }
+    if (searching) return searchButton;
     // A source is chosen: the download button says so, the details are in the downloads view
     const state = isTransferring(transfer) ? `en cours (${pct} %)` : waitingLabel(transfer).toLowerCase();
     return `<button class="track-download-btn" data-action="download" title="Téléchargement ${escapeHtml(state)} · cliquer pour choisir une autre source">${icon(ICONS.clock, 16)}</button>`;
   }
   if (transfer) {
-    return `<span class="status-tag failed" title="Le téléchargement a échoué">Échec</span>${otherSourceButton}`;
+    return `<span class="status-tag failed" title="Le téléchargement a échoué">Échec</span>${searchButton}`;
   }
-  if (isSearching(track)) {
-    return `<button class="track-download-btn searching" data-action="download" title="Recherche en cours">${SPINNER}</button>`;
-  }
+  if (searching) return searchButton;
 
   // Cached search: number of relevant results
   const stats = cachedStats(track);
