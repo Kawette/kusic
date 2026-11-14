@@ -252,6 +252,8 @@ export class SlskdManager {
       this.downloadsDir = options.libraryPath;
       this.state = "running";
       this.onStateChange();
+      // Share files placed since the last run (and apply changed share options)
+      api.rescanShares().catch((err) => console.warn("[slskd] Share rescan failed:", err.message));
       return api;
     } catch (err) {
       if (!this.stopRequested) this.lastError ||= (err as Error).message;
@@ -273,7 +275,7 @@ export class SlskdManager {
         SLSKD_SLSK_PASSWORD: password,
         SLSKD_API_KEY: `role=Administrator;cidr=127.0.0.1/32,::1/128;${apiKey}`,
         // Replace the default slskd/slskd web login: only the API key is used
-        SLSKD_USERNAME: "kusic",
+        SLSKD_USERNAME: "kusic-web",
         SLSKD_PASSWORD: apiKey,
       },
     });

@@ -49,6 +49,13 @@ export class SlskdAPI {
     }
   }
 
+  /** Re-index the shared folders (409 = a scan is already running). */
+  async rescanShares(): Promise<void> {
+    await this.client.put("/api/v0/shares", undefined, {
+      validateStatus: (s) => s < 300 || s === 409,
+    });
+  }
+
   async getServerState(): Promise<ServerState> {
     const response = await this.client.get("/api/v0/server");
     return response.data;

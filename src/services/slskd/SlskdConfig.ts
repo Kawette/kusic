@@ -44,6 +44,7 @@ export class SlskdConfig {
       web: {
         port: webPort,
         ip_address: "127.0.0.1",
+        https: { disabled: true }, // Would listen on every interface
         url_base: "/",
         authentication: { disabled: false },
       },
