@@ -5,7 +5,8 @@
 
 import {
   $, api, bus, closeModal, durationBand, escapeHtml, formatBadge, formatDuration, formatSize,
-  formatTime, icon, ICONS, isPlayable, openModal, qualityLabel, showToast, toastError, withBusyButton,
+  formatTime, icon, ICONS, isPlayable, openModal, qualityLabel, showToast, thumb, toastError,
+  withBusyButton,
 } from './ui.js';
 import { isPlaying, playFile } from './player.js';
 
@@ -21,9 +22,14 @@ function fileCard(title, file, track) {
   }
   const mismatch = durationBand(file.duration, track.duration) === 2 && file.duration && track.duration;
   return `<div class="conflict-card">
-    <h4>${title}</h4>
-    <div class="conflict-quality">${formatBadge(file.format)} <span>${escapeHtml(qualityLabel(file))}</span>
-      ${file.bitDepth ? `<span>${file.bitDepth} bits</span>` : ''}</div>
+    <div class="conflict-card-head">
+      <span title="${file.artwork ? 'Pochette du fichier' : 'Pas de pochette dans le fichier'}">${thumb(file.artwork, 'conflict-art')}</span>
+      <div>
+        <h4>${title}</h4>
+        <div class="conflict-quality">${formatBadge(file.format)} <span>${escapeHtml(qualityLabel(file))}</span>
+          ${file.bitDepth ? `<span>${file.bitDepth} bits</span>` : ''}</div>
+      </div>
+    </div>
     <dl>
       <dt>Durée</dt><dd class="${mismatch ? 'duration-mismatch' : ''}">${formatDuration(file.duration)}${mismatch ? ' (≠ piste)' : ''}</dd>
       <dt>Taille</dt><dd>${formatSize(file.size)}</dd>
@@ -52,11 +58,14 @@ async function openConflict(id) {
   }[current.reason];
 
   body.innerHTML = `
-    <p class="modal-desc">
-      <strong>${escapeHtml(track.artist)} — ${escapeHtml(track.title)}</strong> (${formatDuration(track.duration)})<br>
-      ${explanation}
-      ${duplicate ? 'Détecté' : 'Téléchargé'} le ${formatTime(current.createdAt)}.
-    </p>
+    <div class="conflict-track">
+      ${thumb(track.artwork, 'conflict-track-art')}
+      <p class="modal-desc">
+        <strong>${escapeHtml(track.artist)} — ${escapeHtml(track.title)}</strong> (${formatDuration(track.duration)})<br>
+        ${explanation}
+        ${duplicate ? 'Détecté' : 'Téléchargé'} le ${formatTime(current.createdAt)}.
+      </p>
+    </div>
     <div class="conflict-compare">
       ${fileCard(duplicate ? 'Fichier de la piste' : 'Fichier existant', current.existingFile, track)}
       ${fileCard(duplicate ? 'Doublon' : 'Nouveau fichier', current.newFile, track)}

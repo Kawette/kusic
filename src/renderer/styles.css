@@ -922,15 +922,15 @@ a:hover {
   background: var(--accent-hover);
 }
 
-/* Orange variant, for actions on warnings (conflicts) */
+/* Orange variant for actions on warnings (conflicts): tinted like the tags */
 .btn-small.btn-warning {
-  background: var(--warning);
-  border-color: var(--warning);
-  color: #1a1206;
+  background: rgba(243, 156, 18, 0.2);
+  border-color: transparent;
+  color: var(--warning);
 }
 
 .btn-small.btn-warning:hover {
-  filter: brightness(1.1);
+  background: rgba(243, 156, 18, 0.3);
 }
 
 .slskd-binary-status {
@@ -1627,9 +1627,11 @@ a:hover {
   font-variant-numeric: tabular-nums;
 }
 
+/* Same orange as the conflict tag and banner text, on a dark tint that also
+   reads well on the active (violet) menu entry */
 .nav-badge-warning {
-  background: var(--warning);
-  margin-left: 4px;
+  background: #3d2c0c;
+  color: var(--warning);
 }
 
 /* ─── Track status column ────────────────────────────────────── */
@@ -1841,6 +1843,47 @@ button.identify-result-row {
 
 .conflicts-banner-text {
   flex: 1;
+}
+
+.conflict-track {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 16px;
+}
+
+.conflict-track .modal-desc {
+  margin-bottom: 0;
+}
+
+.conflict-track-art {
+  width: 56px;
+  height: 56px;
+  border-radius: 4px;
+  object-fit: cover;
+  background: var(--bg-active);
+  flex-shrink: 0;
+}
+
+.conflict-card-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.conflict-card-head .conflict-quality {
+  margin-bottom: 0;
+}
+
+.conflict-art {
+  display: block;
+  width: 64px;
+  height: 64px;
+  border-radius: 4px;
+  object-fit: cover;
+  background: var(--bg-active);
+  flex-shrink: 0;
 }
 
 .conflict-compare {

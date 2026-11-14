@@ -89,6 +89,8 @@ export interface ConflictFileInfo {
   bitDepth?: number;
   duration?: number;
   size?: number;
+  /** Cover embedded in the file (kusic-cover:// thumbnail), if any */
+  artwork?: string;
   /** Titles of the playlist tracks this file is linked to */
   linkedTo: string[];
 }

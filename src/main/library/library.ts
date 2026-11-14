@@ -361,6 +361,7 @@ export class Library {
       path: filePath,
       exists: true,
       format: info?.format,
+      artwork: info?.artwork || undefined,
       bitRate: info?.bitRate,
       sampleRate: info?.sampleRate,
       bitDepth: info?.bitDepth,
