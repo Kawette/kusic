@@ -52,20 +52,16 @@ async function openConflict(id) {
   // Duplicates are two files already in the library, found by a scan
   const duplicate = current.reason === 'duplicate';
   const explanation = {
-    'already-linked': 'Cette piste a déjà un fichier dans la bibliothèque.',
+    'already-linked': 'La piste a déjà un fichier dans la bibliothèque.',
     'same-name': 'Un fichier porte déjà ce nom dans la bibliothèque.',
-    duplicate: 'Deux fichiers de la bibliothèque sont liés à cette piste.',
+    duplicate: 'Deux fichiers de la bibliothèque sont liés à la même piste.',
   }[current.reason];
 
   body.innerHTML = `
-    <div class="conflict-track">
-      ${thumb(track.artwork, 'conflict-track-art')}
-      <p class="modal-desc">
-        <strong>${escapeHtml(track.artist)} — ${escapeHtml(track.title)}</strong> (${formatDuration(track.duration)})<br>
-        ${explanation}
-        ${duplicate ? 'Détecté' : 'Téléchargé'} le ${formatTime(current.createdAt)}.
-      </p>
-    </div>
+    <p class="modal-desc">
+      ${explanation}
+      ${duplicate ? 'Détecté' : 'Téléchargé'} le ${formatTime(current.createdAt)}.
+    </p>
     <div class="conflict-compare">
       ${fileCard(duplicate ? 'Fichier de la piste' : 'Fichier existant', current.existingFile, track)}
       ${fileCard(duplicate ? 'Doublon' : 'Nouveau fichier', current.newFile, track)}
