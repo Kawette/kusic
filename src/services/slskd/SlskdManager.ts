@@ -308,7 +308,10 @@ export class SlskdManager {
       for (const line of data.toString().split(/\r?\n/).filter(Boolean)) {
         console.log("[slskd]", line);
         // Search hiccups are routine; keep connection/login/config problems
-        if (/\b(ERR|FTL|error|fail(ed)?|exception|invalid)\b/i.test(line) && !/search/i.test(line)) {
+        if (
+          /\b(ERR|FTL|error|fail(ed)?|exception|invalid)\b/i.test(line) &&
+          !/search|place in queue/i.test(line)
+        ) {
           this.lastError = line.replace(/^\[[^\]]*\]\s*/, "").slice(0, 300);
         }
       }

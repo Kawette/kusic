@@ -168,6 +168,16 @@ export class SlskdAPI {
     );
   }
 
+  /**
+   * Ask the remote user for our position in their upload queue. slskd stores
+   * the answer in the transfer (placeInQueue), returned by later polls.
+   */
+  async refreshPlaceInQueue(username: string, id: string): Promise<void> {
+    await this.client.get(
+      `/api/v0/transfers/downloads/${encodeURIComponent(username)}/${encodeURIComponent(id)}/position`,
+    );
+  }
+
   async getDownloads(): Promise<unknown[]> {
     const response = await this.client.get("/api/v0/transfers/downloads");
     return response.data;

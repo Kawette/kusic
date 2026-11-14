@@ -138,5 +138,7 @@ export interface Transfer {
   averageSpeed: number;
   /** Failed attempts so far; slskd retries automatically (state "Queued, Locally") */
   attempts?: number;
+  /** Position in the remote user's upload queue (last known, 0 = unknown) */
+  placeInQueue?: number;
   trackId?: string;
 }

@@ -2194,3 +2194,12 @@ body.has-player .track-list,
 body.has-player .download-view-list {
   padding-bottom: 80px;
 }
+
+/* Round play button at the right of the identified file */
+.identify-source-info {
+  align-items: center;
+}
+
+.identify-play-btn {
+  margin-left: auto;
+}

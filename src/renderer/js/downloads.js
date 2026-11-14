@@ -23,7 +23,7 @@ export const isFinished = (state) => /completed/i.test(state || '');
 const isSucceeded = (state) => /succeeded/i.test(state || '');
 const isFailed = (state) => isFinished(state) && !isSucceeded(state);
 
-function stateDisplay({ state, attempts }) {
+function stateDisplay({ state, attempts, placeInQueue }) {
   const s = (state || '').toLowerCase();
   // slskd waits before retrying a failed attempt; the transfer is queued again
   if (attempts > 0 && !s.includes('completed') && !s.includes('inprogress')) {
@@ -35,7 +35,9 @@ function stateDisplay({ state, attempts }) {
   if (s.includes('rejected')) return { label: 'Refusé', cls: 'state-error' };
   if (s.includes('completed')) return { label: 'Erreur', cls: 'state-error' };
   if (s.includes('inprogress') || s.includes('initializing')) return { label: 'En cours', cls: 'state-active' };
-  if (s.includes('queued') && s.includes('remote')) return { label: 'File distante', cls: 'state-queued' };
+  if (s.includes('queued') && s.includes('remote')) {
+    return { label: placeInQueue > 0 ? `File distante (${placeInQueue}ᵉ)` : 'File distante', cls: 'state-queued' };
+  }
   if (s.includes('queued') && s.includes('local')) return { label: 'File locale', cls: 'state-queued' };
   if (s.includes('queued')) return { label: 'En attente', cls: 'state-queued' };
   if (s.includes('requested')) return { label: 'Demandé', cls: 'state-queued' };

@@ -4,11 +4,11 @@
 // Otherwise the user searches by name. Linking only happens on click.
 
 import {
-  $, api, closeModal, durationMatch, escapeHtml, formatBadge, formatDuration, openModal, showToast,
-  SOURCE_LABELS,
+  $, api, bus, closeModal, durationMatch, escapeHtml, formatBadge, formatDuration, icon, openModal,
+  showToast, SOURCE_LABELS,
   toastError,
 } from './ui.js';
-import { playTrack } from './player.js';
+import { isPlaying, playTrack } from './player.js';
 
 const modal = $('#identify-modal');
 const sourceTitle = $('#identify-source-title');
@@ -64,6 +64,7 @@ export async function openIdentify(track) {
   searchInput.value = '';
   resultsList.innerHTML = '';
   hint.textContent = '';
+  renderPlayButton();
   openModal(modal, () => { source = null; });
 
   const tracks = (await api.getTracks({ source: 'all' })).filter((t) => t.playlistIds);
@@ -73,7 +74,18 @@ export async function openIdentify(track) {
   render();
 }
 
-$('#identify-play').addEventListener('click', () => source && playTrack(source));
+const playBtn = $('#identify-play');
+const PLAY_ICON = '<polygon points="6 4 20 12 6 20 6 4" fill="currentColor"/>';
+const PAUSE_ICON = '<rect x="6" y="4" width="4" height="16" fill="currentColor"/><rect x="14" y="4" width="4" height="16" fill="currentColor"/>';
+
+function renderPlayButton() {
+  const playing = !!source && isPlaying(source.filePath);
+  playBtn.innerHTML = icon(playing ? PAUSE_ICON : PLAY_ICON, 14);
+  playBtn.title = playing ? 'Pause' : 'Écouter le fichier';
+}
+
+playBtn.addEventListener('click', () => source && playTrack(source));
+bus.on('player:changed', renderPlayButton);
 
 let debounce;
 searchInput.addEventListener('input', () => {

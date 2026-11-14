@@ -102,7 +102,9 @@ function statusHtml(track) {
   const transfer = transferForTrack(track.id);
   if (transfer && !isFinished(transfer.state)) {
     const pct = Math.round(transfer.percentComplete);
-    const label = /inprogress/i.test(transfer.state) ? `↓ ${pct}%` : transfer.attempts ? 'Relance' : 'En file';
+    const label = /inprogress/i.test(transfer.state) ? `↓ ${pct}%`
+      : transfer.attempts ? 'Relance'
+        : transfer.placeInQueue > 0 ? `En file (${transfer.placeInQueue}ᵉ)` : 'En file';
     return `<span class="track-progress" title="${escapeHtml(transfer.state)}">${label}</span>`;
   }
   if (transfer) {

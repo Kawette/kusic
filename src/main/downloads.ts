@@ -16,6 +16,8 @@ import { isInside, slskdLocalPath } from "./library/naming.js";
 const POLL_INTERVAL = 2000;
 const MAX_ATTEMPTS = 10;
 const STALE_AFTER = 7 * 24 * 60 * 60 * 1000;
+/** How often to ask a remote user for our place in their queue */
+const QUEUE_POSITION_INTERVAL = 60_000;
 
 export type DownloadEvent =
   | { type: "placed"; trackId: string; filePath: string }
@@ -52,6 +54,7 @@ function flattenTransfers(users: RawDownloads[]): TrackedTransfer[] {
         percentComplete: file.percentComplete || 0,
         averageSpeed: file.averageSpeed || 0,
         attempts: file.attempts || 0,
+        placeInQueue: file.placeInQueue || 0,
         endedAt: file.endedAt,
       })),
     ),
@@ -66,6 +69,8 @@ export class DownloadTracker {
   private generation = 0;
   private polling: Promise<Transfer[]> | null = null;
   private lastPushed = "";
+  /** Transfer id -> when its queue position was last requested */
+  private positionAskedAt = new Map<string, number>();
   /** Single source of truth, written through to downloads.json */
   private pending: Record<string, PendingDownload> = downloadsStore.get("pending");
 
@@ -157,9 +162,26 @@ export class DownloadTracker {
     }));
     this.push(transfers);
 
+    this.refreshQueuePositions(api, raw);
     await this.processFinished(raw);
     this.pruneStale(raw);
     return transfers;
+  }
+
+  /** Ask (in the background, at most once a minute each) where we are in remote queues. */
+  private refreshQueuePositions(api: SlskdAPI, transfers: Transfer[]): void {
+    const now = Date.now();
+    const queued = transfers.filter((t) => /queued/i.test(t.state) && /remotely/i.test(t.state));
+    for (const t of queued) {
+      if (now - (this.positionAskedAt.get(t.id) ?? 0) < QUEUE_POSITION_INTERVAL) continue;
+      this.positionAskedAt.set(t.id, now);
+      api.refreshPlaceInQueue(t.username, t.id).catch(() => {
+        // The remote user may be offline; the last known position is kept
+      });
+    }
+    // Forget transfers that left the remote queue
+    const ids = new Set(queued.map((t) => t.id));
+    for (const id of this.positionAskedAt.keys()) if (!ids.has(id)) this.positionAskedAt.delete(id);
   }
 
   private async processFinished(transfers: TrackedTransfer[]): Promise<void> {
