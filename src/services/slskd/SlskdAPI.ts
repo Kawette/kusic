@@ -162,10 +162,20 @@ export class SlskdAPI {
     username: string,
     files: Array<{ filename: string; size?: number }>,
   ): Promise<void> {
-    await this.client.post(
-      `/api/v0/transfers/downloads/${encodeURIComponent(username)}`,
-      files,
-    );
+    try {
+      await this.client.post(
+        `/api/v0/transfers/downloads/${encodeURIComponent(username)}`,
+        files,
+      );
+    } catch (err) {
+      // slskd could not reach the user to queue the file ("Failed to enqueue
+      // … The wait timed out"): a remote problem, another source is needed
+      const detail = axios.isAxiosError(err) ? JSON.stringify(err.response?.data ?? "") : "";
+      if (/timed out|unreachable|offline|refused/i.test(detail)) {
+        throw new Error(`${username} ne répond pas : choisissez une autre source`);
+      }
+      throw err;
+    }
   }
 
   /**
