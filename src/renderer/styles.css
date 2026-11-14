@@ -504,6 +504,12 @@ a:hover {
   color: white;
 }
 
+/* A source was chosen and the download is under way */
+.track-download-btn.pending {
+  opacity: 1;
+  background: rgba(108, 92, 231, 0.2);
+}
+
 .source-badge {
   display: inline-flex;
   align-items: center;
@@ -1708,17 +1714,6 @@ a:hover {
 .status-tag.failed {
   background: rgba(231, 76, 60, 0.15);
   color: var(--danger);
-}
-
-.status-tag.waiting {
-  background: var(--bg-active);
-  color: var(--text-secondary);
-}
-
-.track-progress {
-  color: var(--accent);
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
 }
 
 /* Quality details shown on hover, to the left of the format badge */

@@ -124,12 +124,9 @@ function statusHtml(track) {
     if (transfer.userPresence === 'offline') {
       return `<span class="status-tag failed" title="L'utilisateur qui doit envoyer ce fichier est hors ligne">Hors ligne</span>${otherSourceButton}`;
     }
-    // Waiting: a plain tag (the spinner means a search); in someone's queue, another source can be picked
-    if (!isTransferring(transfer)) {
-      const queued = /remotely/i.test(transfer.state);
-      return `<span class="status-tag waiting">${escapeHtml(waitingLabel(transfer))}</span>${queued ? otherSourceButton : ''}`;
-    }
-    return `<span class="track-progress" title="${escapeHtml(transfer.state)}">↓ ${pct}%</span>`;
+    // A source is chosen: the download button says so, the details are in the downloads view
+    const state = isTransferring(transfer) ? `en cours (${pct} %)` : waitingLabel(transfer).toLowerCase();
+    return `<button class="track-download-btn pending" data-action="download" title="Téléchargement ${escapeHtml(state)} · cliquer pour choisir une autre source">${icon(ICONS.download, 16)}</button>`;
   }
   if (transfer) {
     return `<span class="status-tag failed" title="Le téléchargement a échoué">Échec</span>${otherSourceButton}`;
