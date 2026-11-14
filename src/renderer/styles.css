@@ -471,12 +471,7 @@ a:hover {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-}
-
-.track-actions.quality {
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 2px;
+  gap: 6px;
 }
 
 .track-actions .quality-text {
@@ -635,20 +630,6 @@ a:hover {
   color: var(--text-secondary);
 }
 
-.playlist-remove {
-  background: transparent;
-  border: none;
-  color: var(--text-muted);
-  cursor: pointer;
-  padding: 4px;
-  border-radius: var(--radius);
-  transition: all var(--transition);
-}
-
-.playlist-remove:hover {
-  color: var(--danger);
-  background: rgba(231, 76, 60, 0.1);
-}
 
 /* ─── Modal ─────────────────────────────────────────────────── */
 .modal-overlay {
@@ -1045,17 +1026,12 @@ a:hover {
     transform 0.1s;
 }
 
-.slskd-search-btn:hover:not(:disabled) {
+.slskd-search-btn:hover {
   background: var(--accent-hover);
 }
 
-.slskd-search-btn:active:not(:disabled) {
+.slskd-search-btn:active {
   transform: scale(0.95);
-}
-
-.slskd-search-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
 }
 
 .slskd-search-status {
@@ -1221,11 +1197,6 @@ a:hover {
   text-align: center;
 }
 
-.slskd-loading svg {
-  margin-bottom: 12px;
-  color: var(--accent);
-}
-
 /* ─── Downloads View ─────────────────────────────────────────── */
 .nav-badge {
   background: var(--accent);
@@ -1309,7 +1280,7 @@ a:hover {
 
 .download-list-header {
   display: grid;
-  grid-template-columns: 2fr 120px 130px 220px 80px 50px;
+  grid-template-columns: 2fr 120px 130px 200px 80px 100px;
   gap: 12px;
   padding: 8px 16px;
   font-size: 11px;
@@ -1326,7 +1297,7 @@ a:hover {
 
 .dl-row {
   display: grid;
-  grid-template-columns: 2fr 120px 130px 220px 80px 50px;
+  grid-template-columns: 2fr 120px 130px 200px 80px 100px;
   gap: 12px;
   padding: 10px 16px;
   align-items: center;
@@ -1643,10 +1614,6 @@ a:hover {
 }
 
 /* ─── Track status column ────────────────────────────────────── */
-.track-actions {
-  gap: 6px;
-}
-
 .track-download-btn {
   position: relative;
 }
@@ -1765,6 +1732,11 @@ button.identify-icon {
 .playlist-action:hover {
   color: var(--text-primary);
   background: var(--bg-hover);
+}
+
+.playlist-action.playlist-remove:hover {
+  color: var(--danger);
+  background: rgba(231, 76, 60, 0.1);
 }
 
 /* ─── Search modal ───────────────────────────────────────────── */

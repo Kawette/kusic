@@ -25,7 +25,6 @@ contextBridge.exposeInMainWorld("kusic", {
   // Tracks
   getTracks: (filters?: unknown) => ipcRenderer.invoke("get-tracks", filters),
   getStats: () => ipcRenderer.invoke("get-stats"),
-  rescanLibrary: () => ipcRenderer.invoke("rescan-library"),
   linkUnknownToTrack: (fileTrackId: string, targetTrackId: string) =>
     ipcRenderer.invoke("link-unknown-to-track", fileTrackId, targetTrackId),
   onLibraryChanged: (callback: () => void) => subscribe("library-changed", callback),

@@ -11,9 +11,6 @@ export interface Track {
   artwork: string;
   duration: number;
   addedAt: number;
-  spotifyUrl?: string;
-  soundcloudUrl?: string;
-  streamUrl?: string | null;
   /** Playlists containing this track (playlist tracks only) */
   playlistIds?: string[];
   // Local file metadata

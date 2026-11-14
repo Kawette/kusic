@@ -4,6 +4,7 @@ import type { Track, Playlist } from "../types.js";
 
 // SoundCloud rejects requests without a browser-like User-Agent
 const http = axios.create({
+  timeout: 30_000,
   headers: {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
   },
@@ -15,8 +16,6 @@ export interface SoundCloudTrack {
   user?: { username: string; avatar_url?: string };
   artwork_url?: string;
   duration?: number;
-  permalink_url?: string;
-  stream_url?: string;
 }
 
 interface SoundCloudPlaylist {
@@ -137,8 +136,6 @@ export function formatTrack(track: SoundCloudTrack): Track {
       ? track.artwork_url.replace("-large", "-t200x200")
       : track.user?.avatar_url || "",
     duration: track.duration || 0,
-    soundcloudUrl: track.permalink_url,
-    streamUrl: track.stream_url || null,
     addedAt: Date.now(),
   };
 }

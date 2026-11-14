@@ -1,7 +1,7 @@
 // ─── Kusic Renderer entry point ─────────────────────────────
 
-import { $, $$, api, closeAllModals } from './ui.js';
-import { loadTracks } from './tracks.js';
+import { $, $$, api, closeAllModals, toastError } from './ui.js';
+import { loadTracks, updateStats } from './tracks.js';
 import { loadPlaylists } from './playlists.js';
 import { loadConflicts, refreshDownloads, render as renderDownloads } from './downloads.js';
 import { loadCacheSummary } from './search.js';
@@ -34,7 +34,7 @@ function switchView(view) {
     loadConflicts();
   }
   if (view === 'settings') {
-    loadSettings();
+    loadSettings().catch(toastError);
     startStatusPolling();
   }
 }
@@ -56,13 +56,14 @@ document.addEventListener('keydown', (e) => {
 api.onLibraryChanged(() => {
   loadCacheSummary().catch(() => {});
   if (currentView === 'tracks') loadTracks();
+  else updateStats();
   loadPlaylists();
   loadConflicts();
 });
 
 async function init() {
   await loadCacheSummary().catch(() => {});
-  await Promise.all([loadTracks(), loadPlaylists(), loadConflicts()]);
+  await Promise.allSettled([loadTracks(), loadPlaylists(), loadConflicts()]);
   refreshDownloads();
   refreshStatus();
 }

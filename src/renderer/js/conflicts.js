@@ -3,27 +3,29 @@
 // which one to keep. The other one goes to the Windows trash.
 
 import {
-  $, api, bus, closeModal, errorMessage, escapeHtml, formatBadge, formatDuration,
-  formatSize, formatTime, openModal, qualityLabel, showToast, withBusyButton,
+  $, api, bus, closeModal, DURATION_TOLERANCE_MS, escapeHtml, formatBadge, formatDuration,
+  formatSize, formatTime, openModal, qualityLabel, showToast, toastError, withBusyButton,
 } from './ui.js';
 import { loadConflicts } from './downloads.js';
 
 const modal = $('#conflict-modal');
 const body = $('#conflict-body');
 let current = null;
+let busy = false;
 
 function fileCard(title, file, track) {
   if (!file.exists) {
     return `<div class="conflict-card"><h4>${title}</h4><p class="muted">Fichier introuvable</p>
       <p class="conflict-path">${escapeHtml(file.path)}</p></div>`;
   }
-  const gap = track.duration && file.duration ? Math.abs(file.duration - track.duration) : 0;
+  const mismatch = track.duration && file.duration
+    && Math.abs(file.duration - track.duration) > DURATION_TOLERANCE_MS;
   return `<div class="conflict-card">
     <h4>${title}</h4>
     <div class="conflict-quality">${formatBadge(file.format)} <span>${escapeHtml(qualityLabel(file))}</span>
       ${file.bitDepth ? `<span>${file.bitDepth} bits</span>` : ''}</div>
     <dl>
-      <dt>Durée</dt><dd class="${gap > 5000 ? 'duration-mismatch' : ''}">${formatDuration(file.duration)}${gap > 5000 ? ' (≠ piste)' : ''}</dd>
+      <dt>Durée</dt><dd class="${mismatch ? 'duration-mismatch' : ''}">${formatDuration(file.duration)}${mismatch ? ' (≠ piste)' : ''}</dd>
       <dt>Taille</dt><dd>${formatSize(file.size)}</dd>
       <dt>Lié à</dt><dd>${file.linkedTo.length ? file.linkedTo.map(escapeHtml).join('<br>') : '—'}</dd>
     </dl>
@@ -65,15 +67,20 @@ body.addEventListener('click', async (e) => {
     return;
   }
   const btn = e.target.closest('[data-choice]');
-  if (!btn || !current) return;
+  if (!btn || !current || busy) return;
+  // One decision at a time: both choices are locked while it runs
+  busy = true;
+  body.querySelectorAll('[data-choice]').forEach((b) => { b.disabled = true; });
   try {
     await withBusyButton(btn, () => api.resolveConflict(current.id, btn.dataset.choice));
     showToast(btn.dataset.choice === 'replace' ? 'Fichier remplacé' : 'Fichier existant conservé', 'success');
     closeModal(modal);
-    loadConflicts();
   } catch (err) {
-    showToast(`Erreur : ${errorMessage(err)}`, 'error');
+    toastError(err);
+    body.querySelectorAll('[data-choice]').forEach((b) => { b.disabled = false; });
+  } finally {
+    busy = false;
   }
 });
 
-bus.on('conflict:open', openConflict);
+bus.on('conflict:open', (id) => openConflict(id).catch(toastError));

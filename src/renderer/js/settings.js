@@ -1,6 +1,8 @@
 // ─── Settings view ──────────────────────────────────────────
 
-import { $, api, errorMessage, escapeHtml, icon, ICONS, showToast, withBusyButton } from './ui.js';
+import {
+  $, api, errorMessage, escapeHtml, icon, ICONS, showToast, toastError, withBusyButton,
+} from './ui.js';
 
 const fields = {
   clientId: $('#spotify-client-id'),
@@ -32,7 +34,7 @@ export async function loadSettings() {
   const platform = await api.slskd.checkPlatform();
   platformSupported = platform.supported;
   if (platformSupported) {
-    checkSlskdBinary();
+    checkSlskdBinary().catch(toastError);
   } else {
     showUnsupportedPlatform(platform.platform);
   }
@@ -88,16 +90,20 @@ fields.username.addEventListener('input', () => scheduleSave(true));
 fields.password.addEventListener('input', () => scheduleSave(true));
 
 $('#btn-browse-library').addEventListener('click', async () => {
-  const folder = await api.browseFolder();
-  if (!folder) return;
-  fields.libraryPath.value = folder;
-  scheduleSave(true);
-  await flushSettings();
+  try {
+    const folder = await api.browseFolder();
+    if (!folder) return;
+    fields.libraryPath.value = folder;
+    scheduleSave(true);
+    await flushSettings();
+  } catch (err) {
+    toastError(err);
+  }
 });
 
 $('#link-spotify-dev').addEventListener('click', (e) => {
   e.preventDefault();
-  api.openExternal('https://developer.spotify.com/dashboard');
+  api.openExternal('https://developer.spotify.com/dashboard').catch(toastError);
 });
 
 $('#btn-test-spotify').addEventListener('click', async (e) => {
@@ -164,12 +170,12 @@ $('#btn-download-slskd').addEventListener('click', async () => {
     await api.slskd.downloadBinary();
     showToast('slskd installé', 'success');
   } catch (err) {
-    showToast(`Erreur : ${errorMessage(err)}`, 'error');
+    toastError(err);
   } finally {
     unsubscribe();
     progressBar.hidden = true;
     fill.style.width = '0';
-    checkSlskdBinary();
+    checkSlskdBinary().catch(toastError);
   }
 });
 
@@ -230,7 +236,7 @@ async function startSlskd() {
   try {
     await api.slskd.start();
   } catch (err) {
-    showToast(`Erreur : ${errorMessage(err)}`, 'error');
+    toastError(err);
   }
   refreshStatus();
 }
@@ -240,7 +246,7 @@ async function stopSlskd() {
   try {
     await api.slskd.stop();
   } catch (err) {
-    showToast(`Erreur : ${errorMessage(err)}`, 'error');
+    toastError(err);
   }
   refreshStatus();
 }

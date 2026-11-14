@@ -64,9 +64,13 @@ function killTree(pid: number): Promise<void> {
 export class SlskdManager {
   private state: State = "stopped";
   private child: ChildProcess | null = null;
-  private api: SlskdAPI | null = null;
+  private client: SlskdAPI | null = null;
   private startPromise: Promise<SlskdAPI> | null = null;
   private stopPromise: Promise<void> | null = null;
+  /** Set when Stop is clicked while slskd is starting */
+  private stopRequested = false;
+  /** Folder slskd saves downloads to, as configured when it was started */
+  downloadsDir = "";
   /** Last error reported by slskd, shown in the settings */
   lastError = "";
   /** Called when the process exits or becomes ready */
@@ -87,6 +91,11 @@ export class SlskdManager {
 
   get isRunning(): boolean {
     return this.state === "running";
+  }
+
+  /** The API client while slskd is running, else null. */
+  get api(): SlskdAPI | null {
+    return this.isRunning ? this.client : null;
   }
 
   isPlatformSupported(): boolean {
@@ -156,8 +165,12 @@ export class SlskdManager {
       if (!fs.existsSync(path.join(extractDir, "slskd.exe"))) {
         throw new Error("Archive slskd invalide (slskd.exe absent)");
       }
-      fs.rmSync(this.binDir, { recursive: true, force: true });
+      // Swap without ever leaving the install without a binary
+      const oldDir = `${this.binDir}.old`;
+      fs.rmSync(oldDir, { recursive: true, force: true });
+      if (fs.existsSync(this.binDir)) fs.renameSync(this.binDir, oldDir);
       fs.renameSync(extractDir, this.binDir);
+      fs.rmSync(oldDir, { recursive: true, force: true });
 
       fs.writeFileSync(
         this.versionPath,
@@ -178,7 +191,7 @@ export class SlskdManager {
 
   /** Start slskd; concurrent calls share the same start. */
   start(options: SoulseekConfig, apiKey: string): Promise<SlskdAPI> {
-    if (this.state === "running" && this.api) return Promise.resolve(this.api);
+    if (this.state === "running" && this.client) return Promise.resolve(this.client);
     this.startPromise ??= this.doStart(options, apiKey).finally(() => {
       this.startPromise = null;
     });
@@ -198,6 +211,7 @@ export class SlskdManager {
     if (this.stopPromise) await this.stopPromise;
 
     this.state = "starting";
+    this.stopRequested = false;
     this.lastError = "";
     this.onStateChange();
 
@@ -206,6 +220,7 @@ export class SlskdManager {
       if (await isPortInUse(WEB_PORT)) {
         throw new Error(`Le port ${WEB_PORT} est déjà utilisé par une autre application`);
       }
+      if (this.stopRequested) throw new Error("Démarrage annulé");
 
       new SlskdConfig(this.configPath).generate({
         username: options.username,
@@ -231,15 +246,16 @@ export class SlskdManager {
 
       const api = new SlskdAPI(BASE_URL, apiKey);
       await Promise.race([this.waitForReady(api), exited]);
+      if (this.stopRequested) throw new Error("Démarrage annulé");
 
-      this.api = api;
+      this.client = api;
+      this.downloadsDir = options.libraryPath;
       this.state = "running";
       this.onStateChange();
       return api;
     } catch (err) {
-      this.lastError ||= (err as Error).message;
-      await this.stop();
-      this.onStateChange();
+      if (!this.stopRequested) this.lastError ||= (err as Error).message;
+      await this.stop({ force: true });
       throw err;
     }
   }
@@ -256,6 +272,9 @@ export class SlskdManager {
         ...process.env,
         SLSKD_SLSK_PASSWORD: password,
         SLSKD_API_KEY: `role=Administrator;cidr=127.0.0.1/32,::1/128;${apiKey}`,
+        // Replace the default slskd/slskd web login: only the API key is used
+        SLSKD_USERNAME: "kusic",
+        SLSKD_PASSWORD: apiKey,
       },
     });
     this.child = child;
@@ -272,16 +291,21 @@ export class SlskdManager {
     child.stdout?.on("data", onOutput);
     child.stderr?.on("data", onOutput);
 
-    child.on("exit", (code) => {
-      console.log(`[slskd] Process exited with code ${code}`);
+    const onGone = () => {
       // Ignore late exits of a previous process
       if (this.child !== child) return;
       this.child = null;
-      this.api = null;
+      this.client = null;
       this.state = "stopped";
       fs.rmSync(this.pidPath, { force: true });
       this.onStateChange();
+    };
+    child.on("exit", (code) => {
+      console.log(`[slskd] Process exited with code ${code}`);
+      onGone();
     });
+    // Spawn failures (missing or quarantined exe) emit "error" without "exit"
+    child.on("error", onGone);
 
     return child;
   }
@@ -308,17 +332,22 @@ export class SlskdManager {
   }
 
   /** Stop slskd and wait for the process to exit. */
-  stop(): Promise<void> {
+  stop({ force = false } = {}): Promise<void> {
+    // Stop clicked during startup: the start sequence aborts itself
+    if (this.state === "starting" && !force) this.stopRequested = true;
     const child = this.child;
     if (!child) {
-      this.state = "stopped";
+      if (this.state !== "starting" || force) {
+        this.state = "stopped";
+        this.onStateChange();
+      }
       return Promise.resolve();
     }
 
     this.stopPromise ??= (async () => {
       console.log("[slskd] Stopping process...");
       this.state = "stopping";
-      this.api = null;
+      this.client = null;
       const exited = new Promise<void>((resolve) => {
         if (child.exitCode !== null) resolve();
         else child.once("exit", () => resolve());
@@ -346,12 +375,13 @@ export class SlskdManager {
     if (this.state === "starting") {
       return { running: false, connected: false, starting: true };
     }
-    if (!this.isRunning || !this.api) {
+    const api = this.api;
+    if (!api) {
       return { running: false, connected: false, lastError: this.lastError || undefined };
     }
 
     try {
-      const { state = "", username } = await this.api.getServerState();
+      const { state = "", username } = await api.getServerState();
       const isConnected = state.includes("Connected");
       const isLoggedIn = state.includes("LoggedIn");
       return {

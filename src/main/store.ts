@@ -10,9 +10,6 @@ import type {
 } from "../types.js";
 
 interface SettingsSchema {
-  playlists: Playlist[];
-  tracks: Track[];
-  conflicts: FileConflict[];
   spotify: SpotifyConfig;
   soulseek: SoulseekConfig;
   /** Key protecting the local slskd API, generated once */
@@ -21,9 +18,6 @@ interface SettingsSchema {
 
 export const store = new Store<SettingsSchema>({
   defaults: {
-    playlists: [],
-    tracks: [],
-    conflicts: [],
     spotify: { clientId: "", clientSecret: "" },
     soulseek: { username: "", password: "", libraryPath: "" },
     slskdApiKey: "",
@@ -32,6 +26,28 @@ export const store = new Store<SettingsSchema>({
 
 if (!store.get("slskdApiKey")) {
   store.set("slskdApiKey", crypto.randomBytes(24).toString("hex"));
+}
+
+export interface LibraryData {
+  playlists: Playlist[];
+  tracks: Track[];
+  conflicts: FileConflict[];
+}
+
+/** Playlists, track index and conflicts (rewritten on every library change) */
+export const libraryStore = new Store<LibraryData>({
+  name: "library",
+  defaults: { playlists: [], tracks: [], conflicts: [] },
+});
+
+// Older versions kept the library inside config.json, next to the secrets
+{
+  const legacy = store as unknown as Store<Record<string, unknown>>;
+  const playlists = legacy.get("playlists") as Playlist[] | undefined;
+  if (playlists) {
+    if (libraryStore.get("playlists").length === 0) libraryStore.set("playlists", playlists);
+    for (const key of ["playlists", "tracks", "conflicts"]) legacy.delete(key);
+  }
 }
 
 // Large or frequently written data lives in separate files so that saving

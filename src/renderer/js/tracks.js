@@ -2,7 +2,7 @@
 
 import {
   $, api, bus, errorMessage, escapeHtml, formatBadge, formatDuration, icon, ICONS,
-  LOSSLESS, qualityLabel, showToast, SOURCE_LABELS, SPINNER, withBusyButton,
+  isLossless, qualityLabel, showToast, SOURCE_LABELS, SPINNER, toastError, withBusyButton,
 } from './ui.js';
 import { cachedCount, isSearching, openSearch, toggleAutoSearch } from './search.js';
 import { isFinished, transferForTrack } from './downloads.js';
@@ -20,11 +20,7 @@ let byId = new Map();
 const statusCache = new Map(); // trackId -> rendered status html
 let loadToken = 0;
 
-export function currentTracks() {
-  return tracks;
-}
-
-export async function findTrack(id) {
+async function findTrack(id) {
   return byId.get(id) || (await api.getTracks({ source: 'all' })).find((t) => t.id === id);
 }
 
@@ -88,10 +84,9 @@ function statusHtml(track) {
   }
 
   if (track.format) {
-    const lossy = !LOSSLESS.includes(track.format.toUpperCase());
     const quality = qualityLabel(track);
-    return `${formatBadge(track.format)}${quality ? `<span class="quality-text">${quality}</span>` : ''}
-      ${lossy && track.playlistIds ? `<button class="track-upgrade-btn" data-action="upgrade" title="Chercher une meilleure qualité (FLAC)">${icon(ICONS.upgrade, 12)}</button>` : ''}`;
+    return `${formatBadge(track.format)}${quality ? `<span class="quality-text">${escapeHtml(quality)}</span>` : ''}
+      ${!isLossless(track.format) && track.playlistIds ? `<button class="track-upgrade-btn" data-action="upgrade" title="Chercher une meilleure qualité (FLAC)">${icon(ICONS.upgrade, 12)}</button>` : ''}`;
   }
 
   if (!track.playlistIds) return '';
@@ -143,8 +138,12 @@ function rowHtml(track, i) {
 function render() {
   statusCache.clear();
   if (tracks.length === 0) {
+    const filtered = searchInput.value || filterSource.value !== 'all' || filterPlaylist.value;
+    emptyState.querySelector('h2').textContent = filtered ? 'Aucun résultat' : 'Aucune piste';
+    emptyState.querySelector('p').textContent = filtered
+      ? 'Aucune piste ne correspond à ces filtres'
+      : 'Ajoutez une playlist Spotify ou SoundCloud pour commencer';
     trackList.replaceChildren(emptyState);
-    emptyState.hidden = false;
     return;
   }
   trackList.innerHTML = tracks.map(rowHtml).join('');
@@ -165,6 +164,8 @@ function refreshStatuses() {
 
 let statusFrame = 0;
 function scheduleStatusRefresh() {
+  // Hidden view: statuses are recomputed when it is shown again
+  if (!$('#view-tracks').classList.contains('active')) return;
   cancelAnimationFrame(statusFrame);
   statusFrame = requestAnimationFrame(refreshStatuses);
 }
@@ -177,9 +178,9 @@ trackList.addEventListener('click', (e) => {
   const track = actionEl && byId.get(actionEl.closest('.track-row')?.dataset.trackId);
   if (!track) return;
   const { action } = actionEl.dataset;
-  if (action === 'download') openSearch(track);
-  if (action === 'upgrade') openSearch(track, { format: 'flac' });
-  if (action === 'identify') openIdentify(track);
+  if (action === 'download') openSearch(track).catch(toastError);
+  if (action === 'upgrade') openSearch(track, { format: 'flac' }).catch(toastError);
+  if (action === 'identify') openIdentify(track).catch(toastError);
   if (action === 'conflict') bus.emit('conflict:open', track.conflictId);
 });
 
@@ -206,13 +207,17 @@ export async function refreshPlaylists(btn) {
     showToast(`Bibliothèque synchronisée (${result.totalTracks} pistes, ${result.localTracks} fichiers locaux)`, 'success');
     for (const error of result.errors) showToast(error, 'error');
   } catch (err) {
-    showToast(`Erreur : ${errorMessage(err)}`, 'error');
+    toastError(err);
   }
 }
 
 $('#btn-refresh-tracks').addEventListener('click', (e) => refreshPlaylists(e.currentTarget));
 
 bus.on('search:open-track', async (trackId) => {
-  const track = await findTrack(trackId);
-  if (track) openSearch(track);
+  try {
+    const track = await findTrack(trackId);
+    if (track) await openSearch(track);
+  } catch (err) {
+    toastError(err);
+  }
 });

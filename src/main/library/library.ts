@@ -1,13 +1,14 @@
 // ─── Library service ───────────────────────────────────────
-// Owns playlists, the unified track index and file conflicts. Every mutation
-// goes through a single queue so concurrent IPC calls cannot overwrite each
-// other's writes.
+// Owns playlists, the unified track index and file conflicts. The data is
+// kept in memory (single writer) and written through to library.json.
+// Every mutation goes through a single queue so concurrent IPC calls cannot
+// overwrite each other's work.
 
 import { shell } from "electron";
 import crypto from "crypto";
 import fs from "fs";
 import path from "path";
-import { store } from "../store.js";
+import { libraryStore, store, type LibraryData } from "../store.js";
 import { SpotifyService } from "../../services/spotify.js";
 import { SoundCloudService } from "../../services/soundcloud.js";
 import type {
@@ -21,6 +22,7 @@ import type {
 } from "../../types.js";
 import { buildTrackIndex } from "./indexer.js";
 import {
+  cachedLocalFiles,
   cleanEmptyDirs,
   moveFile,
   parseAudioFile,
@@ -63,6 +65,7 @@ async function fetchPlaylist(url: string): Promise<Playlist> {
 
 export class Library {
   private queue: Promise<unknown> = Promise.resolve();
+  private data: LibraryData = libraryStore.store;
 
   constructor(private onChange: () => void = () => {}) {}
 
@@ -73,33 +76,46 @@ export class Library {
     return run;
   }
 
+  private save<K extends keyof LibraryData>(key: K, value: LibraryData[K]): void {
+    this.data[key] = value;
+    libraryStore.set(key, value);
+  }
+
   private get root(): string {
     return store.get("soulseek").libraryPath;
   }
 
   // ─── Index ────────────────────────────────────────────────
 
-  private async rebuildNow() {
-    const localFiles = await scanLibrary(this.root);
-    // Drop conflicts whose incoming file is gone (deleted outside Kusic)
-    const conflicts = store
-      .get("conflicts")
-      .filter((c) => fs.existsSync(c.newPath));
-    store.set("conflicts", conflicts);
+  /**
+   * Rebuild the track index. `rescan` walks the library folder; otherwise the
+   * last scan is reused (playlist-only changes). When the library drive is
+   * unreachable, the last known files are kept and conflicts are not pruned.
+   */
+  private async rebuildNow({ rescan }: { rescan: boolean }) {
+    const root = this.root;
+    const reachable = !!root && fs.existsSync(root);
+    const localFiles = rescan && reachable ? await scanLibrary(root) : cachedLocalFiles();
 
-    const tracks = buildTrackIndex(store.get("playlists"), localFiles, conflicts);
-    store.set("tracks", tracks);
+    if (reachable) {
+      // Drop conflicts whose incoming file was deleted outside Kusic
+      const conflicts = this.data.conflicts.filter((c) => fs.existsSync(c.newPath));
+      if (conflicts.length !== this.data.conflicts.length) this.save("conflicts", conflicts);
+    }
+
+    const tracks = buildTrackIndex(this.data.playlists, localFiles, this.data.conflicts);
+    this.save("tracks", tracks);
     this.onChange();
     return { totalTracks: tracks.length, localTracks: localFiles.length };
   }
 
   /** Rescan the local files (no network). */
   rescan() {
-    return this.exclusive(() => this.rebuildNow());
+    return this.exclusive(() => this.rebuildNow({ rescan: true }));
   }
 
   getTracks(filters: TrackFilters = {}): Track[] {
-    let tracks = store.get("tracks");
+    let tracks = this.data.tracks;
 
     if (filters.search) {
       const q = filters.search.toLowerCase();
@@ -118,26 +134,27 @@ export class Library {
     }
 
     const playlist = filters.playlistId
-      ? store.get("playlists").find((p) => p.id === filters.playlistId)
+      ? this.data.playlists.find((p) => p.id === filters.playlistId)
       : undefined;
     if (playlist) {
       const order = new Map(playlist.tracks.map((t, i) => [t.id, i]));
       tracks = tracks.filter((t) => order.has(t.id));
       if (filters.sortBy === "playlist" || !filters.sortBy) {
-        return tracks.sort((a, b) => order.get(a.id)! - order.get(b.id)!);
+        return [...tracks].sort((a, b) => order.get(a.id)! - order.get(b.id)!);
       }
     }
 
-    return tracks.sort(TRACK_SORTERS[filters.sortBy ?? "recent"] ?? TRACK_SORTERS.recent);
+    const sorter = TRACK_SORTERS[filters.sortBy ?? "recent"] ?? TRACK_SORTERS.recent;
+    return [...tracks].sort(sorter);
   }
 
   getStats() {
-    const tracks = store.get("tracks");
+    const { playlists, tracks, conflicts } = this.data;
     return {
-      totalPlaylists: store.get("playlists").length,
+      totalPlaylists: playlists.length,
       totalTracks: tracks.length,
       missingTracks: tracks.filter((t) => t.playlistIds && !t.format).length,
-      conflicts: store.get("conflicts").length,
+      conflicts: conflicts.length,
     };
   }
 
@@ -145,9 +162,9 @@ export class Library {
 
   getPlaylists(): PlaylistSummary[] {
     const localIds = new Set(
-      store.get("tracks").filter((t) => t.playlistIds && t.format).map((t) => t.id),
+      this.data.tracks.filter((t) => t.playlistIds && t.format).map((t) => t.id),
     );
-    return store.get("playlists").map(({ tracks, ...pl }) => ({
+    return this.data.playlists.map(({ tracks, ...pl }) => ({
       ...pl,
       trackCount: tracks.length,
       localCount: tracks.filter((t) => localIds.has(t.id)).length,
@@ -157,35 +174,33 @@ export class Library {
   async addPlaylist(url: string): Promise<Playlist> {
     const playlist = await fetchPlaylist(url.trim());
     return this.exclusive(async () => {
-      const playlists = store.get("playlists");
+      const { playlists } = this.data;
       if (playlists.some((p) => p.id === playlist.id || p.url === playlist.url)) {
         throw new Error("Cette playlist est déjà dans votre bibliothèque");
       }
-      store.set("playlists", [...playlists, playlist]);
-      await this.rebuildNow();
+      this.save("playlists", [...playlists, playlist]);
+      await this.rebuildNow({ rescan: false });
       return playlist;
     });
   }
 
   removePlaylist(id: string) {
     return this.exclusive(async () => {
-      store.set(
-        "playlists",
-        store.get("playlists").filter((p) => p.id !== id),
-      );
-      await this.rebuildNow();
+      this.save("playlists", this.data.playlists.filter((p) => p.id !== id));
+      await this.rebuildNow({ rescan: false });
       return this.getPlaylists();
     });
   }
 
   /**
    * Fetch every playlist again. A playlist that fails (network, partial
-   * SoundCloud response…) keeps its previous content.
+   * SoundCloud response…) keeps its previous content. Tracks keep the date
+   * they were first seen.
    */
   async refreshPlaylists() {
     const fresh = new Map<string, Playlist>();
     const errors: string[] = [];
-    for (const pl of store.get("playlists")) {
+    for (const pl of this.data.playlists) {
       try {
         fresh.set(pl.id, await fetchPlaylist(pl.url));
       } catch (err) {
@@ -195,19 +210,25 @@ export class Library {
 
     return this.exclusive(async () => {
       // Re-read: playlists may have been added or removed meanwhile
-      const playlists = store.get("playlists").map((pl) => {
+      const playlists = this.data.playlists.map((pl) => {
         const updated = fresh.get(pl.id);
-        return updated ? { ...updated, addedAt: pl.addedAt } : pl;
+        if (!updated) return pl;
+        const firstSeen = new Map(pl.tracks.map((t) => [t.id, t.addedAt]));
+        return {
+          ...updated,
+          addedAt: pl.addedAt,
+          tracks: updated.tracks.map((t) => ({ ...t, addedAt: firstSeen.get(t.id) ?? t.addedAt })),
+        };
       });
-      store.set("playlists", playlists);
-      return { ...(await this.rebuildNow()), errors };
+      this.save("playlists", playlists);
+      return { ...(await this.rebuildNow({ rescan: true })), errors };
     });
   }
 
   exportM3U(playlistId: string, destination: string): number {
-    const playlist = store.get("playlists").find((p) => p.id === playlistId);
+    const playlist = this.data.playlists.find((p) => p.id === playlistId);
     if (!playlist) throw new Error("Playlist introuvable");
-    const byId = new Map(store.get("tracks").map((t) => [t.id, t]));
+    const byId = new Map(this.data.tracks.map((t) => [t.id, t]));
     const lines = ["#EXTM3U", `#PLAYLIST:${playlist.name}`];
     let count = 0;
     for (const { id } of playlist.tracks) {
@@ -226,7 +247,7 @@ export class Library {
   // ─── Placing files ────────────────────────────────────────
 
   private findPlaylistTrack(trackId: string): Track | undefined {
-    for (const pl of store.get("playlists")) {
+    for (const pl of this.data.playlists) {
       const track = pl.tracks.find((t) => t.id === trackId);
       if (track) return track;
     }
@@ -237,8 +258,13 @@ export class Library {
    * Tag `filePath` for `trackId` and move it to "<library>/Artist - Title.ext".
    * Nothing is overwritten: if the track already has a file, or the target
    * name is taken, a conflict is recorded and the file stays where it is.
+   * `keepIds`: other playlist tracks the file stays linked to.
    */
-  private async placeFileNow(filePath: string, trackId: string): Promise<PlaceResult> {
+  private async placeFileNow(
+    filePath: string,
+    trackId: string,
+    keepIds: string[] = [],
+  ): Promise<PlaceResult> {
     const root = this.root;
     if (!root) throw new Error("Dossier de la bibliothèque non configuré");
     const track = this.findPlaylistTrack(trackId);
@@ -249,7 +275,7 @@ export class Library {
       title: track.title,
       artist: track.artist,
       album: track.album,
-      linkedTrackIds: [trackId],
+      linkedTrackIds: [...new Set([trackId, ...keepIds])],
     });
 
     const localFiles = await scanLibrary(root);
@@ -270,29 +296,32 @@ export class Library {
         reason: alreadyLinked ? "already-linked" : "same-name",
         createdAt: Date.now(),
       };
-      store.set("conflicts", [
-        ...store.get("conflicts").filter((c) => !samePath(c.newPath, filePath)),
+      this.save("conflicts", [
+        ...this.data.conflicts.filter((c) => !samePath(c.newPath, filePath)),
         conflict,
       ]);
-      await this.rebuildNow();
+      await this.rebuildNow({ rescan: false });
       return { status: "conflict", conflict };
     }
 
     if (filePath !== target) moveFile(filePath, target, root);
-    await this.rebuildNow();
+    await this.rebuildNow({ rescan: true });
     return { status: "placed", filePath: target };
   }
 
+  /** Place a downloaded file (any foreign KUSIC tag it carries is replaced). */
   placeFile(filePath: string, trackId: string) {
     return this.exclusive(() => this.placeFileNow(filePath, trackId));
   }
 
-  /** Link an unknown local file to a playlist track (user-confirmed). */
+  /** Link a local file that is not a playlist track to one (user-confirmed). */
   linkUnknown(fileTrackId: string, targetTrackId: string) {
     return this.exclusive(async () => {
-      const file = store.get("tracks").find((t) => t.id === fileTrackId && t.filePath);
-      if (!file?.filePath) throw new Error("Fichier source non trouvé");
-      return this.placeFileNow(file.filePath, targetTrackId);
+      const file = this.data.tracks.find((t) => t.id === fileTrackId);
+      if (!file?.filePath || file.playlistIds) throw new Error("Fichier source non trouvé");
+      // Keep the file's links to other playlist tracks (e.g. same song elsewhere)
+      const keepIds = (file.linkedTrackIds || []).filter((id) => this.findPlaylistTrack(id));
+      return this.placeFileNow(file.filePath, targetTrackId, keepIds);
     });
   }
 
@@ -319,23 +348,23 @@ export class Library {
   }
 
   async getConflicts(): Promise<ConflictDetails[]> {
-    const details: ConflictDetails[] = [];
-    for (const conflict of store.get("conflicts")) {
-      const track = this.findPlaylistTrack(conflict.trackId);
-      details.push({
-        ...conflict,
-        track: {
-          id: conflict.trackId,
-          title: track?.title ?? "?",
-          artist: track?.artist ?? "?",
-          duration: track?.duration ?? 0,
-          artwork: track?.artwork ?? "",
-        },
-        newFile: await this.describeFile(conflict.newPath),
-        existingFile: await this.describeFile(conflict.existingPath),
-      });
-    }
-    return details;
+    return Promise.all(
+      this.data.conflicts.map(async (conflict) => {
+        const track = this.findPlaylistTrack(conflict.trackId);
+        return {
+          ...conflict,
+          track: {
+            id: conflict.trackId,
+            title: track?.title ?? "?",
+            artist: track?.artist ?? "?",
+            duration: track?.duration ?? 0,
+            artwork: track?.artwork ?? "",
+          },
+          newFile: await this.describeFile(conflict.newPath),
+          existingFile: await this.describeFile(conflict.existingPath),
+        };
+      }),
+    );
   }
 
   /**
@@ -346,7 +375,7 @@ export class Library {
    */
   resolveConflict(id: string, choice: ConflictChoice) {
     return this.exclusive(async () => {
-      const conflict = store.get("conflicts").find((c) => c.id === id);
+      const conflict = this.data.conflicts.find((c) => c.id === id);
       if (!conflict) throw new Error("Conflit introuvable");
       const root = this.root;
       const existingIds = fs.existsSync(conflict.existingPath)
@@ -376,11 +405,8 @@ export class Library {
         if (!samePath(target, conflict.newPath)) moveFile(conflict.newPath, target, root);
       }
 
-      store.set(
-        "conflicts",
-        store.get("conflicts").filter((c) => c.id !== id),
-      );
-      await this.rebuildNow();
+      this.save("conflicts", this.data.conflicts.filter((c) => c.id !== id));
+      await this.rebuildNow({ rescan: true });
     });
   }
 }

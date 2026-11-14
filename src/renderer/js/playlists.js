@@ -1,7 +1,7 @@
 // ─── Playlists view ─────────────────────────────────────────
 
 import {
-  $, api, closeModal, errorMessage, escapeHtml, icon, ICONS, openModal, showToast,
+  $, api, closeModal, errorMessage, escapeHtml, icon, ICONS, openModal, showToast, toastError,
   withBusyButton,
 } from './ui.js';
 import { refreshPlaylists, setPlaylistOptions, showPlaylist } from './tracks.js';
@@ -28,7 +28,6 @@ export async function loadPlaylists() {
 function render() {
   if (playlists.length === 0) {
     grid.replaceChildren(emptyState);
-    emptyState.hidden = false;
     return;
   }
 
@@ -77,7 +76,7 @@ grid.addEventListener('click', async (e) => {
       const count = await api.exportPlaylist(playlist.id);
       if (count !== null) showToast(`Playlist exportée (${count} fichiers)`, 'success');
     } catch (err) {
-      showToast(`Erreur : ${errorMessage(err)}`, 'error');
+      toastError(err);
     }
   } else {
     showPlaylist(playlist.id);
@@ -92,7 +91,6 @@ $('#btn-add-playlist').addEventListener('click', () => {
   urlInput.value = '';
   addError.hidden = true;
   openModal(addModal);
-  urlInput.focus();
 });
 
 async function addPlaylist() {

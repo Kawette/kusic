@@ -3,7 +3,7 @@
 // finished files); this view only displays them.
 
 import {
-  $, api, bus, errorMessage, escapeHtml, formatSize, formatSpeed, icon, ICONS, showToast,
+  $, api, bus, escapeHtml, formatSize, formatSpeed, icon, ICONS, showToast, toastError,
 } from './ui.js';
 
 const list = $('#download-view-list');
@@ -15,11 +15,12 @@ const conflictsSection = $('#conflicts-section');
 const conflictsList = $('#conflicts-list');
 
 let transfers = [];
+let byTrack = new Map(); // trackId -> most relevant transfer
 let rendered = [];
-let conflicts = [];
+let renderedSignature = '';
 
 export const isFinished = (state) => /completed/i.test(state || '');
-export const isSucceeded = (state) => /succeeded/i.test(state || '');
+const isSucceeded = (state) => /succeeded/i.test(state || '');
 const isFailed = (state) => isFinished(state) && !isSucceeded(state);
 
 function stateDisplay(state) {
@@ -42,18 +43,19 @@ export function pendingDownloadFor(username, filename) {
   return transfers.some((t) => t.username === username && t.filename === filename && !isFailed(t.state));
 }
 
-/** The most relevant transfer for a playlist track (active first). */
+/** The most relevant transfer for a playlist track (active first, then failed). */
 export function transferForTrack(trackId) {
-  const own = transfers.filter((t) => t.trackId === trackId);
-  return own.find((t) => !isFinished(t.state)) || own.find((t) => isFailed(t.state)) || null;
-}
-
-export function conflictCount() {
-  return conflicts.length;
+  return byTrack.get(trackId) || null;
 }
 
 function setTransfers(next) {
   transfers = next || [];
+  byTrack = new Map();
+  for (const t of transfers) {
+    if (!t.trackId || isSucceeded(t.state)) continue;
+    const current = byTrack.get(t.trackId);
+    if (!current || (isFinished(current.state) && !isFinished(t.state))) byTrack.set(t.trackId, t);
+  }
   const active = transfers.filter((t) => !isFinished(t.state)).length;
   navBadge.textContent = active;
   navBadge.hidden = active === 0;
@@ -62,6 +64,11 @@ function setTransfers(next) {
 }
 
 export function render() {
+  // Rebuilding identical rows would only lose clicks and text selection
+  const signature = JSON.stringify(transfers);
+  if (signature === renderedSignature && list.firstElementChild !== emptyState) return;
+  renderedSignature = signature;
+
   const active = transfers.filter((t) => !isFinished(t.state));
   const done = transfers.filter((t) => isSucceeded(t.state));
   const failed = transfers.filter((t) => isFailed(t.state));
@@ -75,7 +82,6 @@ export function render() {
 
   if (transfers.length === 0) {
     list.replaceChildren(emptyState);
-    emptyState.hidden = false;
     return;
   }
 
@@ -124,7 +130,7 @@ list.addEventListener('click', async (e) => {
     if (action === 'other') bus.emit('search:open-track', t.trackId);
   } catch (err) {
     btn.disabled = false;
-    showToast(`Erreur : ${errorMessage(err)}`, 'error');
+    toastError(err);
   }
 });
 
@@ -133,7 +139,7 @@ async function clearFinished(kind) {
     const count = await api.slskd.clearDownloads(kind);
     showToast(`${count} téléchargement(s) retiré(s) de la liste`);
   } catch (err) {
-    showToast(`Erreur : ${errorMessage(err)}`, 'error');
+    toastError(err);
   }
 }
 
@@ -143,7 +149,13 @@ $('#btn-open-library').addEventListener('click', () => api.openLibraryFolder());
 
 // ─── Conflicts ──────────────────────────────────────────────
 export async function loadConflicts() {
-  conflicts = await api.getConflicts();
+  let conflicts;
+  try {
+    conflicts = await api.getConflicts();
+  } catch (err) {
+    toastError(err);
+    return [];
+  }
   conflictBadge.textContent = conflicts.length;
   conflictBadge.hidden = conflicts.length === 0;
   conflictsSection.hidden = conflicts.length === 0;
@@ -165,10 +177,12 @@ conflictsList.addEventListener('click', (e) => {
 // ─── Main-process events ────────────────────────────────────
 api.slskd.onDownloadsUpdated(setTransfers);
 
+// (The library-changed event that follows refreshes tracks and conflicts.)
 api.slskd.onDownloadEvent((event) => {
-  if (event.type === 'conflict') {
+  if (event.type === 'placed') {
+    showToast(`Rangé : ${event.filePath.split(/[\/]/).pop()}`, 'success');
+  } else if (event.type === 'conflict') {
     showToast('Conflit de fichier : à résoudre dans Téléchargements', 'error');
-    loadConflicts();
   } else if (event.type === 'error') {
     showToast(`Fichier téléchargé non rangé : ${event.message}`, 'error');
   }

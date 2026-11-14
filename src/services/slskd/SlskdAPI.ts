@@ -88,7 +88,7 @@ export class SlskdAPI {
     };
   }
 
-  flattenSearchResults(searchData: SearchResponse): SlskdSearchResult[] {
+  private flattenSearchResults(searchData: SearchResponse): SlskdSearchResult[] {
     const results: SlskdSearchResult[] = [];
 
     if (!searchData.responses) return results;

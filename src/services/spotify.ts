@@ -4,7 +4,8 @@ import type { Track, Playlist } from "../types.js";
 
 const API = "https://api.spotify.com/v1";
 const PAGE_SIZE = 100;
-const ITEM_FIELDS = "id,name,type,is_local,artists(name),album(name,images),duration_ms,external_urls";
+const ITEM_FIELDS = "id,name,type,is_local,artists(name),album(name,images),duration_ms";
+const TIMEOUT = 30_000;
 
 interface SpotifyItem {
   id: string | null;
@@ -14,11 +15,11 @@ interface SpotifyItem {
   artists?: { name: string }[];
   album?: { name?: string; images?: { url: string }[] };
   duration_ms: number;
-  external_urls?: { spotify?: string };
 }
 
 /** Playlist entries: since Feb 2026 the object is under `item` (was `track`). */
 interface PlaylistEntry {
+  added_at?: string;
   is_local?: boolean;
   item?: SpotifyItem | null;
   track?: SpotifyItem | null;
@@ -41,8 +42,7 @@ export function mapPlaylistEntry(entry: PlaylistEntry): Track | null {
     album: item.album?.name || "",
     artwork: item.album?.images?.[1]?.url || item.album?.images?.[0]?.url || "",
     duration: item.duration_ms,
-    spotifyUrl: item.external_urls?.spotify,
-    addedAt: Date.now(),
+    addedAt: Date.parse(entry.added_at || "") || Date.now(),
   };
 }
 
@@ -94,6 +94,7 @@ export class SpotifyService {
           Authorization: `Basic ${credentials}`,
           "Content-Type": "application/x-www-form-urlencoded",
         },
+        timeout: TIMEOUT,
       },
     );
 
@@ -106,6 +107,7 @@ export class SpotifyService {
     return axios.get(url, {
       headers: { Authorization: `Bearer ${this.accessToken}` },
       params,
+      timeout: TIMEOUT,
     });
   }
 
@@ -160,7 +162,7 @@ export class SpotifyService {
       const { data } = await this.get(endpoint, {
         offset,
         limit: PAGE_SIZE,
-        fields: `items(is_local,${key}(${ITEM_FIELDS})),next`,
+        fields: `items(added_at,is_local,${key}(${ITEM_FIELDS})),next`,
       });
       for (const entry of data.items as PlaylistEntry[]) {
         const track = mapPlaylistEntry(entry);

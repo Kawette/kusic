@@ -80,7 +80,8 @@ export function parseArtistTitle(
  */
 export function slskdLocalPath(downloadsDir: string, remoteFilename: string): string {
   const clean = (s: string) => s.replace(/[<>:"/\\|?*\x00-\x1f]/g, "_");
-  const parts = remoteFilename.split(/[\\/]/).filter(Boolean);
+  // Peer-supplied path: never let "." / ".." segments escape the downloads folder
+  const parts = remoteFilename.split(/[\\/]/).filter((p) => p && p !== "." && p !== "..");
   const file = clean(parts[parts.length - 1] || remoteFilename);
   return parts.length > 1
     ? path.join(downloadsDir, clean(parts[parts.length - 2]), file)

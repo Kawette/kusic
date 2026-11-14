@@ -7,7 +7,7 @@ import * as mm from "music-metadata";
 import * as taglib from "node-taglib-sharp";
 import { scanCache, type ScanCacheEntry } from "../store.js";
 import type { Track } from "../../types.js";
-import { saveCover } from "./covers.js";
+import { coverExists, saveCover } from "./covers.js";
 import {
   formatKusicComment,
   isInside,
@@ -109,7 +109,12 @@ export async function scanLibrary(root: string): Promise<Track[]> {
       const stats = await fs.promises.stat(filePath).catch(() => null);
       if (!stats) continue;
       const cached = previous[filePath];
-      if (cached && cached.mtimeMs === stats.mtimeMs && cached.size === stats.size) {
+      if (
+        cached &&
+        cached.mtimeMs === stats.mtimeMs &&
+        cached.size === stats.size &&
+        coverExists(cached.track.artwork)
+      ) {
         next[filePath] = cached;
         continue;
       }
@@ -123,6 +128,11 @@ export async function scanLibrary(root: string): Promise<Track[]> {
   const tracks = Object.values(next).map((e) => e.track);
   console.log(`[Kusic] Scanned ${tracks.length} local files`);
   return tracks;
+}
+
+/** Local files as of the last scan, without touching the disk. */
+export function cachedLocalFiles(): Track[] {
+  return Object.values(scanCache.get("files")).map((e) => e.track);
 }
 
 export interface TagValues {
@@ -168,6 +178,10 @@ export function readLinkedIds(filePath: string): string[] {
 
 /** Move a file (across drives if needed), then prune emptied folders. */
 export function moveFile(from: string, to: string, libraryRoot: string): void {
+  // renameSync silently replaces an existing target on Windows
+  if (fs.existsSync(to) && !samePath(from, to)) {
+    throw new Error(`Un fichier existe déjà : ${path.basename(to)}`);
+  }
   try {
     fs.renameSync(from, to);
   } catch (err) {

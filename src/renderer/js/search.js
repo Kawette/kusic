@@ -1,18 +1,19 @@
 // ─── Soulseek search: sessions, modal, auto-search ─────────
 // One search session per normalized query, shared by the modal and the
-// auto-search. The modal only displays the session of the query it shows,
-// so late results of another search can never appear in it.
+// auto-search. The modal only displays the session it started or joined,
+// so results of another search can never appear in it.
 
 import {
-  $, api, bus, closeModal, errorMessage, escapeHtml, formatBadge, formatDuration,
-  formatSize, formatTime, icon, ICONS, normalizeQuery, openModal, showToast, trackQuery,
+  $, api, bus, closeModal, DURATION_TOLERANCE_MS, errorMessage, escapeHtml, formatBadge,
+  formatDuration, formatSize, formatTime, icon, ICONS, isLossless, normalizeQuery, openModal,
+  showToast, toastError, trackQuery,
 } from './ui.js';
 import { pendingDownloadFor } from './downloads.js';
 
 const AUTO_SEARCH_CONCURRENCY = 3;
 const AUTO_SEARCH_DELAY = 5000;
 const PAGE_SIZE = 100;
-const DURATION_TOLERANCE_MS = 5000;
+const MAX_CACHED_RESULTS = 300; // Same limit as the main-process cache
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -31,16 +32,10 @@ export function cachedCount(track) {
 }
 
 // ─── Sessions ───────────────────────────────────────────────
-const sessions = new Map(); // key -> session
+const sessions = new Map(); // key -> running session
 
 export function isSearching(track) {
   return sessions.has(normalizeQuery(trackQuery(track)));
-}
-
-function notify(session) {
-  // Ignore sessions replaced by a newer search for the same query
-  const current = sessions.get(session.key) ?? session;
-  if (shown?.key === session.key && current === session) renderSession(session);
 }
 
 /** Start (or join) the search for `query`. `force` restarts it, ignoring the cache. */
@@ -50,7 +45,10 @@ function runSearch(query, { force = false } = {}) {
   if (existing && !force) return existing;
   if (existing) cancelSession(existing);
 
-  const session = { query, key, id: null, results: [], fileCount: 0, complete: false, cancelled: false, error: null };
+  const session = {
+    query, key, id: null, results: [], version: 0, fileCount: 0,
+    complete: false, cancelled: false, error: null,
+  };
   sessions.set(key, session);
   bus.emit('search:changed', key);
 
@@ -58,6 +56,10 @@ function runSearch(query, { force = false } = {}) {
     try {
       const { id } = await api.slskd.search(query);
       session.id = id;
+      if (session.cancelled) {
+        api.slskd.cancelSearch(id).catch(() => {});
+        return;
+      }
       let loadedCount = 0;
       for (let tick = 0; !session.cancelled; tick++) {
         await sleep(tick < 6 ? 500 : 1000);
@@ -69,7 +71,8 @@ function runSearch(query, { force = false } = {}) {
           const data = await api.slskd.getSearchResults(id, true);
           if (session.cancelled) break;
           loadedCount = status.fileCount;
-          session.results = data.results;
+          session.results = data.results.slice(0, MAX_CACHED_RESULTS);
+          session.version++;
         }
         notify(session);
         if (status.isComplete) break;
@@ -97,6 +100,10 @@ function cancelSession(session) {
   bus.emit('search:changed', session.key);
 }
 
+function notify(session) {
+  if (shown?.session === session) renderSession(session);
+}
+
 // ─── Modal ──────────────────────────────────────────────────
 const modal = $('#slskd-modal');
 const queryInput = $('#slskd-search-query');
@@ -109,8 +116,10 @@ const filters = {
   freeSlots: $('#result-free-slots'),
   sort: $('#result-sort'),
 };
+const LOADING_HTML = '<div class="slskd-loading"><p>Recherche sur le réseau Soulseek...</p></div>';
 
-let shown = null; // { key, query, track } displayed in the modal
+/** What the modal displays: the track, and the session or cached results shown. */
+let shown = null; // { track, key, session, renderedVersion }
 let currentResults = [];
 let visible = []; // filtered + sorted results currently rendered
 let limit = PAGE_SIZE;
@@ -129,38 +138,41 @@ async function ensureConnected() {
 }
 
 /**
- * Open the search modal for a playlist track (or a free query).
+ * Open the search modal for a playlist track.
  * `options.format` presets the format filter (e.g. "flac" to upgrade a file).
  */
 export async function openSearch(track, options = {}) {
   if (!(await ensureConnected())) return;
 
-  const query = options.query || trackQuery(track);
-  shown = { key: normalizeQuery(query), query, track };
+  shown = { track };
   filters.format.value = options.format || '';
   filters.bitrate.value = '0';
   filters.freeSlots.checked = false;
   filters.sort.value = 'quality';
-  queryInput.value = query;
-
-  targetEl.hidden = !track;
-  if (track) {
-    targetEl.innerHTML = `Pour : <strong>${escapeHtml(track.artist)} — ${escapeHtml(track.title)}</strong>
-      <span class="muted">(${formatDuration(track.duration)}${track.format ? `, fichier actuel ${escapeHtml(track.format)}` : ''})</span>`;
-  }
+  queryInput.value = trackQuery(track);
+  targetEl.innerHTML = `Pour : <strong>${escapeHtml(track.artist)} — ${escapeHtml(track.title)}</strong>
+    <span class="muted">(${formatDuration(track.duration)}${track.format ? `, fichier actuel ${escapeHtml(track.format)}` : ''})</span>`;
 
   openModal(modal, () => { shown = null; });
-  showQuery(query);
+  await showQuery(queryInput.value);
 }
 
 async function showQuery(query, { force = false } = {}) {
   const key = normalizeQuery(query);
-  shown = { ...shown, key, query };
-  limit = PAGE_SIZE;
+  const view = { ...shown, key, session: null, renderedVersion: -1 };
+  shown = view;
 
-  if (!force && !sessions.has(key)) {
+  // Never leave the previous query's results on screen (or clickable)
+  limit = PAGE_SIZE;
+  currentResults = [];
+  visible = [];
+  resultsList.innerHTML = LOADING_HTML;
+  resultsList.scrollTop = 0;
+  statusEl.textContent = 'Recherche...';
+
+  if (!force && !sessions.has(key) && cacheSummary.has(key)) {
     const cached = await api.searchCache.get(query);
-    if (shown?.key !== key) return;
+    if (shown !== view) return; // Another query was opened meanwhile
     if (cached) {
       currentResults = cached.results;
       renderResults(false);
@@ -169,14 +181,11 @@ async function showQuery(query, { force = false } = {}) {
     }
   }
 
-  currentResults = [];
-  resultsList.innerHTML = '<div class="slskd-loading"><p>Recherche sur le réseau Soulseek...</p></div>';
-  statusEl.textContent = 'Recherche...';
-  renderSession(runSearch(query, { force }));
+  view.session = runSearch(query, { force });
+  renderSession(view.session);
 }
 
 function renderSession(session) {
-  currentResults = session.results;
   if (session.error) {
     statusEl.textContent = `Erreur : ${session.error}`;
   } else if (session.complete) {
@@ -184,10 +193,13 @@ function renderSession(session) {
   } else {
     statusEl.textContent = `Recherche... ${session.fileCount} fichiers`;
   }
-  renderResults(!session.complete);
+  // Rebuild the rows only when results changed (keeps clicks and buttons stable)
+  if (shown.renderedVersion !== session.version || session.complete) {
+    shown.renderedVersion = session.version;
+    currentResults = session.results;
+    renderResults(!session.complete);
+  }
 }
-
-const LOSSLESS_EXT = ['flac', 'wav', 'alac', 'ape', 'aiff'];
 
 function applyFilters(results) {
   const format = filters.format.value;
@@ -196,9 +208,10 @@ function applyFilters(results) {
   const durationGap = (r) => (target && r.length ? Math.abs(r.length * 1000 - target) : Infinity);
 
   const filtered = results.filter((r) => {
-    if (format === 'lossless' && !LOSSLESS_EXT.includes(r.extension)) return false;
+    const lossless = isLossless(r.extension);
+    if (format === 'lossless' && !lossless) return false;
     if (format && format !== 'lossless' && r.extension !== format) return false;
-    if (minBitrate && !LOSSLESS_EXT.includes(r.extension) && (r.bitRate || 0) < minBitrate) return false;
+    if (minBitrate && !lossless && (r.bitRate || 0) < minBitrate) return false;
     if (filters.freeSlots.checked && !r.freeUploadSlots) return false;
     return true;
   });
@@ -212,9 +225,7 @@ function applyFilters(results) {
   return filtered.sort(sorters[filters.sort.value] || sorters.quality);
 }
 
-function downloadKey(r) {
-  return `${r.username}\u0000${r.filename}`;
-}
+const downloadKey = (r) => `${r.username}\u0000${r.filename}`;
 
 function renderResults(searching) {
   const all = applyFilters([...currentResults]);
@@ -222,7 +233,7 @@ function renderResults(searching) {
 
   if (visible.length === 0) {
     resultsList.innerHTML = searching
-      ? '<div class="slskd-loading"><p>Recherche sur le réseau Soulseek...</p></div>'
+      ? LOADING_HTML
       : `<div class="slskd-no-results"><p>${currentResults.length ? 'Aucun résultat avec ces filtres' : 'Aucun résultat trouvé'}</p></div>`;
     return;
   }
@@ -232,9 +243,7 @@ function renderResults(searching) {
     const name = r.filename.split(/[\\/]/).pop();
     const quality = [r.bitRate && `${r.bitRate} kbps`, r.sampleRate && `${(r.sampleRate / 1000).toFixed(1)} kHz`]
       .filter(Boolean).join(' · ') || '—';
-    const gap = target && r.length ? Math.abs(r.length * 1000 - target) : 0;
-    const durationCls = gap > DURATION_TOLERANCE_MS ? 'duration-mismatch' : '';
-    const durationTitle = gap > DURATION_TOLERANCE_MS ? `Durée différente de la piste (${formatDuration(target)})` : '';
+    const mismatch = target && r.length && Math.abs(r.length * 1000 - target) > DURATION_TOLERANCE_MS;
     const started = startedDownloads.has(downloadKey(r)) || pendingDownloadFor(r.username, r.filename);
     const userInfo = `${r.freeUploadSlots ? 'Slot libre' : 'Pas de slot libre'}${r.queueLength ? ` · file d'attente : ${r.queueLength}` : ''} · ${Math.round(r.uploadSpeed / 1024)} Ko/s`;
 
@@ -242,8 +251,8 @@ function renderResults(searching) {
       <span class="result-filename" title="${escapeHtml(r.filename)}">${escapeHtml(name)}</span>
       <span class="result-user" title="${escapeHtml(userInfo)}">${r.freeUploadSlots ? '' : '<span class="no-slot">●</span> '}${escapeHtml(r.username)}</span>
       <span class="result-format">${formatBadge(r.extension)}</span>
-      <span class="result-quality">${quality}</span>
-      <span class="result-duration ${durationCls}" title="${durationTitle}">${r.length ? formatDuration(r.length * 1000) : '—'}</span>
+      <span class="result-quality">${escapeHtml(quality)}</span>
+      <span class="result-duration${mismatch ? ' duration-mismatch' : ''}" ${mismatch ? `title="Durée différente de la piste (${formatDuration(target)})"` : ''}>${r.length ? formatDuration(r.length * 1000) : '—'}</span>
       <span class="result-size">${formatSize(r.size)}</span>
       <button class="result-download-btn${started ? ' done' : ''}" data-index="${i}" ${started ? 'disabled title="Téléchargement lancé"' : 'title="Télécharger"'}>
         ${icon(started ? ICONS.check : ICONS.download)}
@@ -258,8 +267,7 @@ function renderResults(searching) {
 }
 
 function rerender() {
-  const session = shown && sessions.get(shown.key);
-  renderResults(!!session && !session.complete);
+  renderResults(!!shown?.session && !shown.session.complete);
 }
 
 resultsList.addEventListener('click', async (e) => {
@@ -271,16 +279,19 @@ resultsList.addEventListener('click', async (e) => {
   const btn = e.target.closest('.result-download-btn');
   if (!btn || btn.disabled) return;
   const result = visible[btn.dataset.index];
+  const key = downloadKey(result);
+  // Marked before the request so a re-render cannot re-enable the button
+  startedDownloads.add(key);
   btn.disabled = true;
+  btn.classList.add('done');
+  btn.innerHTML = icon(ICONS.check);
   try {
     await api.slskd.download(result.username, result.filename, result.size, shown?.track?.id);
-    startedDownloads.add(downloadKey(result));
-    btn.classList.add('done');
-    btn.innerHTML = icon(ICONS.check);
     showToast('Téléchargement lancé', 'success');
   } catch (err) {
-    btn.disabled = false;
-    showToast(`Erreur : ${errorMessage(err)}`, 'error');
+    startedDownloads.delete(key);
+    rerender();
+    toastError(err);
   }
 });
 
@@ -291,17 +302,13 @@ Object.values(filters).forEach((el) => el.addEventListener('change', () => {
 
 function submitQuery(force) {
   const query = queryInput.value.trim();
-  if (query && shown) showQuery(query, { force });
+  if (query && shown) showQuery(query, { force }).catch(toastError);
 }
 
 $('#slskd-search-btn').addEventListener('click', () => submitQuery(true));
 queryInput.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') submitQuery(false);
 });
-
-export function closeSearch() {
-  closeModal(modal);
-}
 
 // ─── Auto-search ────────────────────────────────────────────
 // Searches only: results are cached for the user to choose from, nothing is
@@ -351,6 +358,8 @@ export async function toggleAutoSearch(tracks) {
     Promise.all(workers).then(() => {
       if (auto === run) stopAutoSearch(`Recherche terminée (${run.done} pistes)`, 'success');
     });
+  } catch (err) {
+    toastError(err);
   } finally {
     autoStarting = false;
   }
@@ -360,8 +369,7 @@ async function autoWorker(run, initialDelay) {
   await sleep(initialDelay);
   while (auto === run && run.queue.length > 0) {
     const query = run.queue.shift();
-    const key = normalizeQuery(query);
-    if (!cacheSummary.has(key)) {
+    if (!cacheSummary.has(normalizeQuery(query))) {
       const session = runSearch(query);
       run.sessions.add(session);
       await session.promise;
@@ -386,7 +394,7 @@ function stopAutoSearch(message, type = 'info') {
   auto = null;
   // Cancel in-flight searches, except the one displayed in the modal
   for (const session of run?.sessions || []) {
-    if (shown?.key !== session.key) cancelSession(session);
+    if (shown?.session !== session) cancelSession(session);
   }
   renderAutoState();
   if (message) showToast(message, type);

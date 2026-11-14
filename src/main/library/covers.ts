@@ -2,7 +2,7 @@
 // Embedded covers are stored as 200px JPEG thumbnails in
 // %APPDATA%/kusic/covers, named by content hash, and served to the renderer
 // through the kusic-cover:// protocol. The folder can be deleted at any time:
-// it is rebuilt from the audio files on the next scan.
+// missing thumbnails are rebuilt from the audio files on the next scan.
 
 import { app, nativeImage, net, protocol } from "electron";
 import crypto from "crypto";
@@ -29,6 +29,12 @@ export function handleCoverProtocol(): void {
     if (!HASH.test(hash)) return new Response(null, { status: 404 });
     return net.fetch(pathToFileURL(path.join(coversDir(), `${hash}.jpg`)).href);
   });
+}
+
+/** False when a kusic-cover:// thumbnail was deleted from the cache folder. */
+export function coverExists(url: string): boolean {
+  if (!url.startsWith(`${COVER_SCHEME}://`)) return true;
+  return fs.existsSync(path.join(coversDir(), `${url.slice(COVER_SCHEME.length + 3)}.jpg`));
 }
 
 /** Save a thumbnail of an embedded picture and return its URL ("" on failure). */

@@ -14,7 +14,7 @@ import {
   setCachedSearch,
 } from "./search-cache.js";
 import { SpotifyService } from "../services/spotify.js";
-import { SlskdManager, type SlskdAPI } from "../services/slskd/index.js";
+import { SlskdManager } from "../services/slskd/index.js";
 import type {
   AppSettings,
   ConflictChoice,
@@ -29,15 +29,16 @@ let mainWindow: BrowserWindow | null = null;
 let browsedLibraryPath: string | null = null;
 
 function send(channel: string, payload?: unknown): void {
-  mainWindow?.webContents.send(channel, payload);
+  // The window may already be gone while quitting
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(channel, payload);
 }
 
 const library = new Library(() => send("library-changed"));
 const slskd = new SlskdManager();
 const downloads = new DownloadTracker(
-  () => (slskd.isRunning ? slskd.getAPI() : null),
+  () => slskd.api,
   library,
-  () => store.get("soulseek").libraryPath,
+  () => slskd.downloadsDir,
   (transfers) => send("downloads-updated", transfers),
   (event) => send("download-event", event),
 );
@@ -69,6 +70,10 @@ function createWindow(): void {
       nodeIntegration: false,
       sandbox: true,
     },
+  });
+
+  mainWindow.on("closed", () => {
+    mainWindow = null;
   });
 
   // The UI is a single local page: no navigation, no pop-ups
@@ -125,8 +130,11 @@ app.on("will-quit", (e) => {
   if (quitting) return;
   quitting = true;
   e.preventDefault();
-  downloads.stop();
-  slskd.stop().finally(() => app.quit());
+  try {
+    downloads.stop();
+  } finally {
+    slskd.stop().finally(() => app.quit());
+  }
 });
 
 app.on("activate", () => {
@@ -135,11 +143,12 @@ app.on("activate", () => {
 
 // ─── Settings ──────────────────────────────────────────────────
 
-function text(value: unknown, field: string): string {
+/** A string from the renderer; trimmed unless it is a secret. */
+function text(value: unknown, field: string, { trim = true } = {}): string {
   if (typeof value !== "string" || value.length > 1000) {
     throw new Error(`Valeur invalide pour ${field}`);
   }
-  return value.trim();
+  return trim ? value.trim() : value;
 }
 
 ipcMain.handle(
@@ -151,26 +160,30 @@ ipcMain.handle(
 );
 
 ipcMain.handle("save-settings", async (_, settings: Partial<AppSettings>) => {
-  if (settings.spotify) {
-    store.set("spotify", {
-      clientId: text(settings.spotify.clientId, "Client ID"),
-      clientSecret: text(settings.spotify.clientSecret, "Client Secret"),
-    });
+  // Validate everything before saving anything
+  const spotify = settings.spotify && {
+    clientId: text(settings.spotify.clientId, "Client ID"),
+    clientSecret: text(settings.spotify.clientSecret, "Client Secret"),
+  };
+  const current = store.get("soulseek");
+  const soulseek = settings.soulseek && {
+    username: text(settings.soulseek.username, "nom d'utilisateur"),
+    password: text(settings.soulseek.password, "mot de passe", { trim: false }),
+    libraryPath: text(settings.soulseek.libraryPath, "dossier"),
+  };
+  // The library folder can only come from the folder picker
+  if (
+    soulseek &&
+    soulseek.libraryPath !== current.libraryPath &&
+    soulseek.libraryPath !== browsedLibraryPath
+  ) {
+    throw new Error("Choisissez le dossier de la bibliothèque avec le bouton Parcourir");
   }
 
-  if (settings.soulseek) {
-    const current = store.get("soulseek");
-    const libraryPath = text(settings.soulseek.libraryPath, "dossier");
-    // The library folder can only come from the folder picker
-    if (libraryPath !== current.libraryPath && libraryPath !== browsedLibraryPath) {
-      throw new Error("Choisissez le dossier de la bibliothèque avec le bouton Parcourir");
-    }
-    store.set("soulseek", {
-      username: text(settings.soulseek.username, "nom d'utilisateur"),
-      password: text(settings.soulseek.password, "mot de passe"),
-      libraryPath,
-    });
-    if (libraryPath !== current.libraryPath) await library.rescan();
+  if (spotify) store.set("spotify", spotify);
+  if (soulseek) {
+    store.set("soulseek", soulseek);
+    if (soulseek.libraryPath !== current.libraryPath) await library.rescan();
   }
   return true;
 });
@@ -197,7 +210,6 @@ ipcMain.handle("get-playlists", () => library.getPlaylists());
 ipcMain.handle("add-playlist", (_, url: string) => library.addPlaylist(text(url, "URL")));
 ipcMain.handle("remove-playlist", (_, id: string) => library.removePlaylist(id));
 ipcMain.handle("refresh-library", () => library.refreshPlaylists());
-ipcMain.handle("rescan-library", () => library.rescan());
 ipcMain.handle("get-tracks", (_, filters?: TrackFilters) => library.getTracks(filters));
 ipcMain.handle("get-stats", () => library.getStats());
 
@@ -257,12 +269,6 @@ ipcMain.handle("search-cache-summary", () => getCacheSummary());
 
 // ─── Slskd ─────────────────────────────────────────────────────
 
-/** The slskd API client, or an error when the daemon is not running. */
-function slskdApi(): SlskdAPI {
-  if (!slskd.isRunning) throw new Error("slskd n'est pas démarré");
-  return slskd.getAPI();
-}
-
 ipcMain.handle("slskd-check-platform", () => ({
   supported: slskd.isPlatformSupported(),
   platform: process.platform,
@@ -289,17 +295,17 @@ ipcMain.handle("slskd-status", () => slskd.getStatus());
 
 ipcMain.handle("slskd-search", (_, query: string) => {
   console.log(`[Search] Starting search for: "${query}"`);
-  return slskdApi().search(text(query, "recherche"));
+  return slskd.getAPI().search(text(query, "recherche"));
 });
 
 ipcMain.handle("slskd-cancel-search", async (_, searchId: string) => {
-  if (slskd.isRunning) await slskdApi().cancelSearch(searchId);
+  await slskd.api?.cancelSearch(searchId);
 });
 
 ipcMain.handle(
   "slskd-get-search-results",
   (_, { searchId, includeFiles = true }: { searchId: string; includeFiles?: boolean }) =>
-    slskdApi().getSearchResults(searchId, includeFiles),
+    slskd.getAPI().getSearchResults(searchId, includeFiles),
 );
 
 ipcMain.handle(
@@ -313,16 +319,14 @@ ipcMain.handle(
       trackId,
     }: { username: string; filename: string; size: number; trackId?: string },
   ) => {
-    await slskdApi().download(username, [{ filename, size }]);
+    await slskd.getAPI().download(username, [{ filename, size }]);
     if (trackId) downloads.register(username, filename, size, trackId);
     downloads.refresh().catch(() => {});
     return true;
   },
 );
 
-ipcMain.handle("slskd-get-downloads", () =>
-  slskd.isRunning ? downloads.refresh() : [],
-);
+ipcMain.handle("slskd-get-downloads", () => (slskd.api ? downloads.refresh() : []));
 
 ipcMain.handle(
   "slskd-cancel-download",
@@ -335,7 +339,7 @@ ipcMain.handle(
       remove,
     }: { username: string; id: string; filename: string; remove: boolean },
   ) => {
-    await slskdApi().cancelDownload(username, id, remove);
+    await slskd.getAPI().cancelDownload(username, id, remove);
     if (remove) downloads.forget(username, filename);
     await downloads.refresh();
     return true;
@@ -348,7 +352,8 @@ ipcMain.handle(
     _,
     { username, id, filename, size }: { username: string; id: string; filename: string; size: number },
   ) => {
-    await slskdApi().retryDownload(username, id, filename, size);
+    await slskd.getAPI().retryDownload(username, id, filename, size);
+    downloads.resetAttempts(username, filename);
     await downloads.refresh();
     return true;
   },
@@ -356,9 +361,13 @@ ipcMain.handle(
 
 /** Remove finished transfers from the list: succeeded ones, or failed ones. */
 ipcMain.handle("slskd-clear-downloads", async (_, kind: "succeeded" | "failed") => {
-  const api = slskdApi();
+  const api = slskd.getAPI();
   const finished = (await downloads.refresh()).filter(
-    (t) => /completed/i.test(t.state) && isSucceeded(t.state) === (kind === "succeeded"),
+    (t) =>
+      /completed/i.test(t.state) &&
+      isSucceeded(t.state) === (kind === "succeeded") &&
+      // Keep succeeded downloads that are not placed in the library yet
+      !(kind === "succeeded" && downloads.isPending(t.username, t.filename)),
   );
   await Promise.all(finished.map((t) => api.cancelDownload(t.username, t.id, true)));
   if (kind === "failed") finished.forEach((t) => downloads.forget(t.username, t.filename));

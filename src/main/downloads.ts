@@ -11,7 +11,7 @@ import type { Transfer } from "../types.js";
 import { downloadsStore, type PendingDownload } from "./store.js";
 import type { Library } from "./library/library.js";
 import { listAudioFiles } from "./library/files.js";
-import { slskdLocalPath } from "./library/naming.js";
+import { isInside, slskdLocalPath } from "./library/naming.js";
 
 const POLL_INTERVAL = 2000;
 const MAX_ATTEMPTS = 10;
@@ -28,12 +28,18 @@ export function isSucceeded(state: string): boolean {
   return /succeeded/i.test(state);
 }
 
-interface RawDownloads {
-  username?: string;
-  directories?: { files?: Partial<Transfer>[] }[];
+interface RawFile extends Partial<Transfer> {
+  endedAt?: string;
 }
 
-function flattenTransfers(users: RawDownloads[]): Transfer[] {
+interface RawDownloads {
+  username?: string;
+  directories?: { files?: RawFile[] }[];
+}
+
+type TrackedTransfer = Transfer & { endedAt?: string };
+
+function flattenTransfers(users: RawDownloads[]): TrackedTransfer[] {
   return users.flatMap((user) =>
     (user.directories || []).flatMap((dir) =>
       (dir.files || []).map((file) => ({
@@ -45,22 +51,28 @@ function flattenTransfers(users: RawDownloads[]): Transfer[] {
         bytesTransferred: file.bytesTransferred || 0,
         percentComplete: file.percentComplete || 0,
         averageSpeed: file.averageSpeed || 0,
+        endedAt: file.endedAt,
       })),
     ),
   );
 }
+
+const sizeOf = (p: string) => fs.promises.stat(p).then((s) => s.size, () => -1);
 
 export class DownloadTracker {
   private timer: NodeJS.Timeout | null = null;
   private running = false;
   private generation = 0;
   private polling: Promise<Transfer[]> | null = null;
-  private latest: Transfer[] = [];
+  private lastPushed = "";
+  /** Single source of truth, written through to downloads.json */
+  private pending: Record<string, PendingDownload> = downloadsStore.get("pending");
 
   constructor(
     private getApi: () => SlskdAPI | null,
     private library: Library,
-    private libraryRoot: () => string,
+    /** Folder slskd saves downloads to (the one it was started with) */
+    private downloadsDir: () => string,
     private onUpdate: (transfers: Transfer[]) => void,
     private onEvent: (event: DownloadEvent) => void,
   ) {}
@@ -70,7 +82,7 @@ export class DownloadTracker {
     this.running = true;
     const generation = ++this.generation;
     const loop = async () => {
-      await this.refresh().catch(() => {});
+      await this.refresh().catch((err) => console.error("[Downloads] Poll failed:", err));
       if (generation === this.generation) this.timer = setTimeout(loop, POLL_INTERVAL);
     };
     loop();
@@ -81,17 +93,15 @@ export class DownloadTracker {
     this.generation++;
     if (this.timer) clearTimeout(this.timer);
     this.timer = null;
-    this.latest = [];
-    this.onUpdate([]);
+    this.push([]);
   }
 
-  get transfers(): Transfer[] {
-    return this.latest;
+  private persist(): void {
+    downloadsStore.set("pending", this.pending);
   }
 
   register(username: string, filename: string, size: number, trackId: string): void {
-    const pending = downloadsStore.get("pending");
-    pending[keyOf(username, filename)] = {
+    this.pending[keyOf(username, filename)] = {
       username,
       filename,
       size,
@@ -99,13 +109,26 @@ export class DownloadTracker {
       requestedAt: Date.now(),
       attempts: 0,
     };
-    downloadsStore.set("pending", pending);
+    this.persist();
   }
 
   forget(username: string, filename: string): void {
-    const pending = downloadsStore.get("pending");
-    delete pending[keyOf(username, filename)];
-    downloadsStore.set("pending", pending);
+    delete this.pending[keyOf(username, filename)];
+    this.persist();
+  }
+
+  isPending(username: string, filename: string): boolean {
+    return keyOf(username, filename) in this.pending;
+  }
+
+  /** Give a failed placement another round of attempts (on retry). */
+  resetAttempts(username: string, filename: string): void {
+    const entry = this.pending[keyOf(username, filename)];
+    if (!entry) return;
+    entry.attempts = 0;
+    entry.requestedAt = Date.now();
+    delete entry.error;
+    this.persist();
   }
 
   /** Poll slskd now (concurrent callers share the same poll). */
@@ -114,47 +137,46 @@ export class DownloadTracker {
     return this.polling;
   }
 
+  /** Send the list to the UI only when something changed. */
+  private push(transfers: Transfer[]): void {
+    const serialized = JSON.stringify(transfers);
+    if (serialized === this.lastPushed) return;
+    this.lastPushed = serialized;
+    this.onUpdate(transfers);
+  }
+
   private async poll(): Promise<Transfer[]> {
     const api = this.getApi();
     if (!api) return [];
 
-    const pending = downloadsStore.get("pending");
-    const transfers = flattenTransfers((await api.getDownloads()) as RawDownloads[]).map(
-      (t) => ({ ...t, trackId: pending[keyOf(t.username, t.filename)]?.trackId }),
-    );
-    this.latest = transfers;
-    this.onUpdate(transfers);
+    const raw = flattenTransfers((await api.getDownloads()) as RawDownloads[]);
+    const transfers: Transfer[] = raw.map(({ endedAt: _endedAt, ...t }) => ({
+      ...t,
+      trackId: this.pending[keyOf(t.username, t.filename)]?.trackId,
+    }));
+    this.push(transfers);
 
-    await this.processFinished(transfers, pending);
+    await this.processFinished(raw);
+    this.pruneStale(raw);
     return transfers;
   }
 
-  private async processFinished(
-    transfers: Transfer[],
-    pending: Record<string, PendingDownload>,
-  ): Promise<void> {
-    let changed = false;
-
+  private async processFinished(transfers: TrackedTransfer[]): Promise<void> {
     for (const t of transfers) {
       const key = keyOf(t.username, t.filename);
-      const entry = pending[key];
+      const entry = this.pending[key];
       if (!entry || !isSucceeded(t.state) || entry.attempts >= MAX_ATTEMPTS) continue;
-
-      changed = true;
-      const filePath = await this.locate(t);
-      if (!filePath) {
-        // slskd may still be moving the file out of the incomplete folder
-        entry.attempts++;
-        if (entry.attempts >= MAX_ATTEMPTS) {
-          entry.error = "Fichier téléchargé introuvable dans la bibliothèque";
-          this.onEvent({ type: "error", trackId: entry.trackId, message: entry.error });
-        }
-        continue;
-      }
+      // An older finished transfer of the same file (re-download): wait for the new one
+      if (t.endedAt && Date.parse(t.endedAt) < entry.requestedAt) continue;
 
       try {
+        const filePath = await this.locate(t);
+        if (!filePath) {
+          // slskd may still be moving the file out of the incomplete folder
+          throw new Error("Fichier téléchargé introuvable dans la bibliothèque");
+        }
         const result = await this.library.placeFile(filePath, entry.trackId);
-        delete pending[key];
+        delete this.pending[key];
         this.onEvent(
           result.status === "placed"
             ? { type: "placed", trackId: entry.trackId, filePath: result.filePath }
@@ -167,33 +189,44 @@ export class DownloadTracker {
           this.onEvent({ type: "error", trackId: entry.trackId, message: entry.error });
         }
       }
+      this.persist();
     }
+  }
 
-    // Forget requests whose transfer vanished from slskd long ago
+  /** Forget requests whose transfer vanished from slskd long ago. */
+  private pruneStale(transfers: Transfer[]): void {
     const known = new Set(transfers.map((t) => keyOf(t.username, t.filename)));
-    for (const [key, entry] of Object.entries(pending)) {
+    let changed = false;
+    for (const [key, entry] of Object.entries(this.pending)) {
       if (!known.has(key) && Date.now() - entry.requestedAt > STALE_AFTER) {
-        delete pending[key];
+        delete this.pending[key];
         changed = true;
       }
     }
-
-    if (changed) downloadsStore.set("pending", pending);
+    if (changed) this.persist();
   }
 
   /** Local path of a finished download: where slskd puts it, else by name + size. */
   private async locate(t: Transfer): Promise<string | null> {
-    const root = this.libraryRoot();
+    const root = this.downloadsDir();
     if (!root) return null;
+    const matches = async (p: string) => {
+      const size = await sizeOf(p);
+      return size >= 0 && (!t.size || size === t.size);
+    };
+
     const expected = slskdLocalPath(root, t.filename);
-    const sizeMatches = (p: string) => !t.size || fs.statSync(p).size === t.size;
-    if (fs.existsSync(expected) && sizeMatches(expected)) return expected;
+    if (isInside(expected, root) && (await matches(expected))) return expected;
 
     // slskd renames on collisions; fall back to the newest same-size file
     const stem = path.basename(expected, path.extname(expected)).toLowerCase();
-    const candidates = (await listAudioFiles(root))
-      .filter((p) => path.basename(p).toLowerCase().startsWith(stem) && sizeMatches(p))
-      .sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs);
-    return candidates[0] ?? null;
+    const candidates: { path: string; mtime: number }[] = [];
+    for (const p of await listAudioFiles(root)) {
+      if (!path.basename(p).toLowerCase().startsWith(stem) || !(await matches(p))) continue;
+      const stats = await fs.promises.stat(p).catch(() => null);
+      if (stats) candidates.push({ path: p, mtime: stats.mtimeMs });
+    }
+    candidates.sort((a, b) => b.mtime - a.mtime);
+    return candidates[0]?.path ?? null;
   }
 }

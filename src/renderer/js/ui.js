@@ -20,7 +20,6 @@ export const ICONS = {
   close: '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>',
   retry: '<polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/>',
   trash: '<polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/>',
-  folder: '<path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/>',
   export: '<path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/>',
   upgrade: '<line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/>',
   warning: '<path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>',
@@ -40,6 +39,11 @@ export const SOURCE_LABELS = {
 };
 
 export const LOSSLESS = ['FLAC', 'WAV', 'ALAC', 'APE', 'AIFF'];
+
+export const isLossless = (format) => LOSSLESS.includes((format || '').toUpperCase());
+
+/** Above this gap, a file's duration is flagged as different from the track's. */
+export const DURATION_TOLERANCE_MS = 5000;
 
 /** Soulseek query for a track: "Artist Title". */
 export function trackQuery(track) {
@@ -77,8 +81,7 @@ export function formatTime(timestamp) {
 
 /** "FLAC 44.1 kHz" / "MP3 320 kbps" */
 export function qualityLabel({ format, bitRate, sampleRate }) {
-  const fmt = (format || '').toUpperCase();
-  if (LOSSLESS.includes(fmt) && sampleRate) return `${(sampleRate / 1000).toFixed(1)} kHz`;
+  if (isLossless(format) && sampleRate) return `${(sampleRate / 1000).toFixed(1)} kHz`;
   if (bitRate) return `${bitRate} kbps`;
   return '';
 }
@@ -106,6 +109,11 @@ export function errorMessage(err) {
   return String(err?.message || err).replace(/^Error invoking remote method '[^']+': (\w*Error: )?/, '');
 }
 
+/** `.catch(toastError)` for fire-and-forget calls from event handlers. */
+export function toastError(err) {
+  showToast(`Erreur : ${errorMessage(err)}`, 'error');
+}
+
 // ─── Modals ─────────────────────────────────────────────────
 const modalCloseHandlers = new Map();
 
@@ -113,7 +121,7 @@ const modalCloseHandlers = new Map();
 export function openModal(el, onClose) {
   el.hidden = false;
   if (onClose) modalCloseHandlers.set(el, onClose);
-  el.querySelector('input:not([type=checkbox]), button')?.focus();
+  (el.querySelector('input:not([type=checkbox])') || el.querySelector('.modal-actions button'))?.focus();
 }
 
 export function closeModal(el) {
@@ -128,11 +136,15 @@ export function closeAllModals() {
   $$('.modal-overlay').forEach(closeModal);
 }
 
-// Backdrop clicks and [data-close-modal] buttons close their modal
+// Backdrop clicks and [data-close-modal] buttons close their modal. A drag
+// that starts inside the modal and ends on the backdrop is not a click on it.
+let pressedOn = null;
+document.addEventListener('mousedown', (e) => { pressedOn = e.target; });
 document.addEventListener('click', (e) => {
   const overlay = e.target.closest('.modal-overlay');
   if (!overlay) return;
-  if (e.target === overlay || e.target.closest('[data-close-modal]')) closeModal(overlay);
+  const onBackdrop = e.target === overlay && pressedOn === overlay;
+  if (onBackdrop || e.target.closest('[data-close-modal]')) closeModal(overlay);
 });
 
 // Hide images that fail to load (artwork URLs can expire or be blocked by CSP)

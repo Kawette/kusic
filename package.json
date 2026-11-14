@@ -7,7 +7,7 @@
   "scripts": {
     "build": "node build.js",
     "watch": "tsc --watch",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc -p tsconfig.check.json",
     "test": "vitest run",
     "start": "npm run build && electron .",
     "dev": "npm run build && electron . --dev",
