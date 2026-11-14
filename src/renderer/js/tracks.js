@@ -124,8 +124,11 @@ function statusHtml(track) {
     if (transfer.userPresence === 'offline') {
       return `<span class="status-tag failed" title="L'utilisateur qui doit envoyer ce fichier est hors ligne">Hors ligne</span>${otherSourceButton}`;
     }
-    const label = isTransferring(transfer) ? `↓ ${pct}%` : waitingLabel(transfer);
-    return `<span class="track-progress" title="${escapeHtml(transfer.state)}">${label}</span>`;
+    // Waiting (queue, retry…): just a spinner, the details are in the tooltip and the downloads view
+    if (!isTransferring(transfer)) {
+      return `<span class="track-progress" title="${escapeHtml(waitingLabel(transfer))}">${SPINNER}</span>`;
+    }
+    return `<span class="track-progress" title="${escapeHtml(transfer.state)}">↓ ${pct}%</span>`;
   }
   if (transfer) {
     return `<span class="status-tag failed" title="Le téléchargement a échoué">Échec</span>${otherSourceButton}`;
@@ -134,7 +137,7 @@ function statusHtml(track) {
     return `<button class="track-download-btn searching" data-action="download" title="Recherche en cours">${SPINNER}</button>`;
   }
 
-  // Cached search: number of relevant results, green when one is lossless
+  // Cached search: number of relevant results
   const stats = cachedStats(track);
   const count = stats?.relevant;
   const title = !stats ? 'Rechercher sur Soulseek'

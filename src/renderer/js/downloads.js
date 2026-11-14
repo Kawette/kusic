@@ -26,8 +26,6 @@ const isRemotelyQueued = (t) => /queued/i.test(t.state) && /remotely/i.test(t.st
 
 /** Label of a transfer that is waiting (shared with the track list). */
 export function waitingLabel(t) {
-  // slskd waits before retrying a failed attempt; the transfer is queued again
-  if (t.attempts > 0) return `Relance (n°${t.attempts + 1})`;
   if (isRemotelyQueued(t)) return t.placeInQueue > 0 ? `En file (${t.placeInQueue}ᵉ)` : 'En file';
   if (/requested/i.test(t.state)) return 'Demandé';
   return 'En attente';

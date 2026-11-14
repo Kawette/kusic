@@ -142,8 +142,6 @@ export interface Transfer {
   bytesTransferred: number;
   percentComplete: number;
   averageSpeed: number;
-  /** Failed attempts so far; slskd retries automatically (state "Queued, Locally") */
-  attempts?: number;
   /** Position in the remote user's upload queue (last known, 0 = unknown) */
   placeInQueue?: number;
   /** Whether the remote user is connected (checked while we wait in their queue) */

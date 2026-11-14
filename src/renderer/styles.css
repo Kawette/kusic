@@ -1676,6 +1676,8 @@ a:hover {
 }
 
 .track-progress {
+  display: inline-flex;
+  align-items: center;
   color: var(--accent);
   font-size: 11px;
   font-variant-numeric: tabular-nums;
