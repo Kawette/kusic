@@ -51,10 +51,26 @@ export async function updateStats() {
     $('#stat-tracks').textContent = stats.totalTracks;
     $('#stat-missing').textContent = stats.missingTracks;
     $('#stat-playlists').textContent = stats.totalPlaylists;
+    showConflictCount(stats.conflicts);
   } catch {
     // Stats are informative only
   }
 }
+
+/** Conflicts are resolved from the track list: badge in the menu + banner. */
+function showConflictCount(count) {
+  const badge = $('#nav-conflict-badge');
+  badge.textContent = count;
+  badge.hidden = count === 0;
+  // No banner while the conflicts are already the ones listed
+  $('#conflicts-banner').hidden = count === 0 || filterSource.value === 'conflicts';
+  $('#conflicts-banner-text').textContent = count > 1 ? `${count} conflits à résoudre` : '1 conflit à résoudre';
+}
+
+$('#btn-show-conflicts').addEventListener('click', () => {
+  filterSource.value = 'conflicts';
+  loadTracks();
+});
 
 /** Show only the tracks of one playlist (from the playlists view). */
 export function showPlaylist(playlistId) {
@@ -82,7 +98,7 @@ export function setPlaylistOptions(playlists) {
 /** The "Fichier" column: quality, download state, conflict or search button. */
 function statusHtml(track) {
   if (track.conflictId) {
-    return `<button class="track-status-btn conflict" data-action="conflict" title="Deux fichiers pour cette piste : à résoudre">${icon(ICONS.warning)} Conflit</button>`;
+    return `<button class="track-status-btn conflict" data-action="conflict" title="Deux fichiers pour cette piste : cliquez pour comparer et choisir">Conflit</button>`;
   }
 
   if (track.format) {

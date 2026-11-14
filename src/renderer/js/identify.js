@@ -106,7 +106,7 @@ resultsList.addEventListener('click', async (e) => {
     const result = await api.linkUnknownToTrack(file.id, target.id);
     showToast(
       result.status === 'conflict'
-        ? 'Fichier lié, mais en conflit : à résoudre dans Téléchargements'
+        ? 'Fichier lié, mais en conflit : à résoudre dans la liste des pistes'
         : 'Morceau identifié et lié',
       result.status === 'conflict' ? 'error' : 'success',
     );

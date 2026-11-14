@@ -30,6 +30,7 @@
               <path d="M9 18V5l12-2v13" /><circle cx="6" cy="18" r="3" /><circle cx="18" cy="16" r="3" />
             </svg>
             <span>Toutes les pistes</span>
+            <span class="nav-badge nav-badge-warning" id="nav-conflict-badge" title="Conflits à résoudre" hidden>0</span>
           </button>
           <button class="nav-btn" data-view="downloads">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -37,7 +38,6 @@
             </svg>
             <span>Téléchargements</span>
             <span class="nav-badge" id="nav-download-badge" hidden>0</span>
-            <span class="nav-badge nav-badge-warning" id="nav-conflict-badge" title="Conflits à résoudre" hidden>0</span>
           </button>
           <button class="nav-btn" data-view="playlists">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -90,6 +90,10 @@
               </button>
             </div>
           </div>
+          <div class="conflicts-banner" id="conflicts-banner" hidden>
+            <span class="conflicts-banner-text" id="conflicts-banner-text"></span>
+            <button class="btn-small btn-accent" id="btn-show-conflicts">Voir</button>
+          </div>
           <div class="view-controls">
             <div class="search-box">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
@@ -103,6 +107,7 @@
               <option value="local">Local</option>
               <option value="unknown">Inconnu</option>
               <option value="matched">Identifiable</option>
+              <option value="conflicts">Conflits</option>
             </select>
             <select id="filter-playlist" class="select-control">
               <option value="">Toutes les playlists</option>
@@ -266,12 +271,6 @@
           </div>
 
           <div class="downloads-content">
-            <div class="conflicts-section" id="conflicts-section" hidden>
-              <h3>Conflits à résoudre</h3>
-              <p class="setting-help">Ces fichiers n'ont pas été rangés car la piste a déjà un fichier ou le nom est déjà pris. Rien n'est supprimé sans votre choix.</p>
-              <div id="conflicts-list"></div>
-            </div>
-
             <div class="downloads-summary" id="downloads-summary"></div>
             <div class="download-list-header">
               <span class="dl-col-name">Fichier</span>

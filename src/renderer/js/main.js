@@ -3,7 +3,7 @@
 import { $, $$, api, closeAllModals, toastError } from './ui.js';
 import { loadTracks, updateStats } from './tracks.js';
 import { loadPlaylists } from './playlists.js';
-import { loadConflicts, refreshDownloads, render as renderDownloads } from './downloads.js';
+import { refreshDownloads, render as renderDownloads } from './downloads.js';
 import { loadCacheSummary } from './search.js';
 import {
   flushSettings, loadSettings, refreshStatus, startStatusPolling, stopStatusPolling,
@@ -31,7 +31,6 @@ function switchView(view) {
   if (view === 'downloads') {
     renderDownloads();
     refreshDownloads();
-    loadConflicts();
   }
   if (view === 'settings') {
     loadSettings().catch(toastError);
@@ -58,12 +57,11 @@ api.onLibraryChanged(() => {
   if (currentView === 'tracks') loadTracks();
   else updateStats();
   loadPlaylists();
-  loadConflicts();
 });
 
 async function init() {
   await loadCacheSummary().catch(() => {});
-  await Promise.allSettled([loadTracks(), loadPlaylists(), loadConflicts()]);
+  await Promise.allSettled([loadTracks(), loadPlaylists()]);
   refreshDownloads();
   refreshStatus();
 }

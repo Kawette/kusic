@@ -7,7 +7,6 @@ import {
   $, api, bus, closeModal, durationBand, escapeHtml, formatBadge, formatDuration, formatSize,
   formatTime, isPlayable, openModal, qualityLabel, showToast, toastError, withBusyButton,
 } from './ui.js';
-import { loadConflicts } from './downloads.js';
 import { playFile } from './player.js';
 
 const modal = $('#conflict-modal');
@@ -39,7 +38,7 @@ function fileCard(title, file, track) {
 }
 
 async function openConflict(id) {
-  const conflicts = await loadConflicts();
+  const conflicts = await api.getConflicts();
   current = conflicts.find((c) => c.id === id);
   if (!current) return;
   const { track } = current;

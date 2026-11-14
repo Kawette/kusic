@@ -58,14 +58,15 @@ export interface AppSettings {
 
 export interface TrackFilters {
   search?: string;
-  source?: "all" | "missing" | "matched" | PlaylistSource | "local" | "unknown";
+  source?: "all" | "missing" | "matched" | "conflicts" | PlaylistSource | "local" | "unknown";
   playlistId?: string;
   sortBy?: "recent" | "title" | "artist" | "duration" | "playlist";
 }
 
 /**
- * A downloaded (or identified) file that could not be placed because the
- * track already has a file, or its "Artist - Title" name is taken.
+ * Two files competing for a playlist track: a downloaded (or identified)
+ * file that could not be placed because the track already has a file or its
+ * "Artist - Title" name is taken, or a duplicate found in the library.
  */
 export interface FileConflict {
   id: string;

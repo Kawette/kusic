@@ -139,6 +139,8 @@ export class Library {
       tracks = tracks.filter((t) => t.playlistIds && !t.format);
     } else if (filters.source === "matched") {
       tracks = tracks.filter((t) => t.suggestedTrackIds);
+    } else if (filters.source === "conflicts") {
+      tracks = tracks.filter((t) => t.conflictId);
     } else if (filters.source && filters.source !== "all") {
       tracks = tracks.filter((t) => t.source === filters.source);
     }
@@ -159,11 +161,12 @@ export class Library {
   }
 
   getStats() {
-    const { playlists, tracks } = this.data;
+    const { playlists, tracks, conflicts } = this.data;
     return {
       totalPlaylists: playlists.length,
       totalTracks: tracks.length,
       missingTracks: tracks.filter((t) => t.playlistIds && !t.format).length,
+      conflicts: conflicts.length,
     };
   }
 

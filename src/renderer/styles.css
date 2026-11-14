@@ -1651,24 +1651,32 @@ a:hover {
   color: var(--accent);
 }
 
+/* Clickable status tags, same look as the source tags */
 .track-status-btn {
   display: inline-flex;
   align-items: center;
   gap: 4px;
   padding: 3px 8px;
-  border-radius: 10px;
-  border: 1px solid currentColor;
-  background: none;
+  border: none;
+  border-radius: 20px;
+  font: inherit;
   font-size: 11px;
+  font-weight: 600;
   cursor: pointer;
 }
 
 .track-status-btn.conflict {
+  background: rgba(243, 156, 18, 0.15);
   color: var(--warning);
 }
 
 .track-status-btn.failed {
+  background: rgba(231, 76, 60, 0.15);
   color: var(--danger);
+}
+
+.track-status-btn:hover {
+  filter: brightness(1.2);
 }
 
 .track-progress {
@@ -1814,44 +1822,21 @@ button.identify-result-row {
 }
 
 /* ─── Conflicts ──────────────────────────────────────────────── */
-.conflicts-section {
-  margin-bottom: 20px;
-  padding: 16px;
-  border: 1px solid rgba(243, 156, 18, 0.4);
-  border-radius: var(--radius-lg);
-  background: rgba(243, 156, 18, 0.06);
-}
-
-.conflicts-section h3 {
-  font-size: 14px;
-  color: var(--warning);
-  margin-bottom: 4px;
-}
-
-.conflict-row {
+.conflicts-banner {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 8px 0;
-  border-top: 1px solid var(--border);
-  font-size: 13px;
-}
-
-.conflict-icon {
+  margin-bottom: 16px;
+  padding: 10px 16px;
+  border-radius: var(--radius);
+  background: rgba(243, 156, 18, 0.12);
   color: var(--warning);
-  display: inline-flex;
+  font-size: 13px;
+  font-weight: 600;
 }
 
-.conflict-title {
+.conflicts-banner-text {
   flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.conflict-reason {
-  color: var(--text-secondary);
-  font-size: 12px;
 }
 
 .conflict-compare {

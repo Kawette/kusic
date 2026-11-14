@@ -10,9 +10,6 @@ const list = $('#download-view-list');
 const emptyState = $('#downloads-empty');
 const summary = $('#downloads-summary');
 const navBadge = $('#nav-download-badge');
-const conflictBadge = $('#nav-conflict-badge');
-const conflictsSection = $('#conflicts-section');
-const conflictsList = $('#conflicts-list');
 
 let transfers = [];
 let byTrack = new Map(); // trackId -> most relevant transfer
@@ -165,52 +162,15 @@ $('#dl-clear-done').addEventListener('click', () => clearFinished('succeeded'));
 $('#dl-clear-failed').addEventListener('click', () => clearFinished('failed'));
 $('#btn-open-library').addEventListener('click', () => api.openLibraryFolder().catch(toastError));
 
-// ─── Conflicts ──────────────────────────────────────────────
-let conflictsToken = 0;
-
-const CONFLICT_REASONS = {
-  'already-linked': 'La piste a déjà un fichier',
-  'same-name': 'Nom de fichier déjà pris',
-  duplicate: 'Doublon dans la bibliothèque',
-};
-
-export async function loadConflicts() {
-  const token = ++conflictsToken;
-  let conflicts;
-  try {
-    conflicts = await api.getConflicts();
-  } catch (err) {
-    toastError(err);
-    return [];
-  }
-  if (token !== conflictsToken) return conflicts; // A newer load is in flight
-  conflictBadge.textContent = conflicts.length;
-  conflictBadge.hidden = conflicts.length === 0;
-  conflictsSection.hidden = conflicts.length === 0;
-  conflictsList.innerHTML = conflicts.map((c) => `
-    <div class="conflict-row">
-      <span class="conflict-icon">${icon(ICONS.warning, 16)}</span>
-      <span class="conflict-title">${escapeHtml(c.track.artist)} — ${escapeHtml(c.track.title)}</span>
-      <span class="conflict-reason">${CONFLICT_REASONS[c.reason] || ''}</span>
-      <button class="btn-small btn-accent" data-conflict-id="${escapeHtml(c.id)}">Comparer et choisir</button>
-    </div>`).join('');
-  return conflicts;
-}
-
-conflictsList.addEventListener('click', (e) => {
-  const btn = e.target.closest('[data-conflict-id]');
-  if (btn) bus.emit('conflict:open', btn.dataset.conflictId);
-});
-
 // ─── Main-process events ────────────────────────────────────
 api.slskd.onDownloadsUpdated(setTransfers);
 
-// (The library-changed event that follows refreshes tracks and conflicts.)
+// (The library-changed event that follows refreshes the tracks and conflicts.)
 api.slskd.onDownloadEvent((event) => {
   if (event.type === 'placed') {
     showToast(`Rangé : ${baseName(event.filePath)}`, 'success');
   } else if (event.type === 'conflict') {
-    showToast('Conflit de fichier : à résoudre dans Téléchargements', 'error');
+    showToast('Conflit de fichier : à résoudre dans la liste des pistes', 'error');
   } else if (event.type === 'error') {
     showToast(`Fichier téléchargé non rangé : ${event.message}`, 'error');
   }
