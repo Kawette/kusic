@@ -504,7 +504,7 @@ a:hover {
   color: white;
 }
 
-/* A source was chosen: the search's check, discreet in the list */
+/* A source was chosen: a clock, the file is on its way */
 .track-download-btn.pending {
   opacity: 1;
   color: var(--success);
