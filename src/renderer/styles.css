@@ -1826,8 +1826,11 @@ button.identify-icon {
 }
 
 /* Search: upload slot free / busy. Downloads: user online / away / offline.
-   Even size so it centers on whole pixels; always present so names line up */
+   Even size so it lands on whole pixels; always present so names line up.
+   Lowered by 1px: the box center sits above the optical center of the text. */
 .user-dot {
+  position: relative;
+  top: 1px;
   width: 6px;
   height: 6px;
   border-radius: 50%;
