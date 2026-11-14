@@ -1793,9 +1793,10 @@ button.identify-icon {
 }
 
 /* Upload slot of the user: free (starts now) or busy (waits in their queue) */
+/* Even size so it centers on whole pixels; always present so names line up */
 .slot-dot {
-  width: 7px;
-  height: 7px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
   flex-shrink: 0;
 }

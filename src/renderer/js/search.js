@@ -303,7 +303,7 @@ function renderResults(searching) {
     const off = offTopicSet.has(r);
     return `<div class="slskd-result-row${off ? ' off-topic' : ''}" ${off ? 'title="Le nom du fichier ne contient pas le titre"' : ''}>
       <span class="result-filename" title="${escapeHtml(r.filename)}">${escapeHtml(name)}</span>
-      <span class="result-user" data-tooltip="${escapeHtml(userInfo)}">${slot ? `<span class="slot-dot ${slot}"></span>` : ''}<span class="result-username">${escapeHtml(r.username)}</span></span>
+      <span class="result-user" data-tooltip="${escapeHtml(userInfo)}"><span class="slot-dot ${slot}"></span><span class="result-username">${escapeHtml(r.username)}</span></span>
       <span class="result-format">${formatBadge(r.extension)}</span>
       <span class="result-quality">${escapeHtml(quality)}</span>
       <span class="result-duration ${duration.cls}" title="${duration.title}">${r.length ? formatDuration(r.length * 1000) : '—'}</span>
