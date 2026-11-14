@@ -27,7 +27,7 @@ export type DownloadEvent =
 const keyOf = (username: string, filename: string) => `${username}\u0000${filename}`;
 
 /** slskd times are UTC but may come without a time zone suffix. */
-function parseUtc(time: string): number {
+export function parseUtc(time: string): number {
   return Date.parse(/(Z|[+-]\d\d:?\d\d)$/.test(time) ? time : `${time}Z`);
 }
 
@@ -40,14 +40,14 @@ interface RawFile extends Partial<Transfer> {
   endedAt?: string;
 }
 
-interface RawDownloads {
+export interface RawDownloads {
   username?: string;
   directories?: { files?: RawFile[] }[];
 }
 
 type TrackedTransfer = Transfer & { endedAt?: string };
 
-function flattenTransfers(users: RawDownloads[]): TrackedTransfer[] {
+export function flattenTransfers(users: RawDownloads[]): TrackedTransfer[] {
   return users.flatMap((user) =>
     (user.directories || []).flatMap((dir) =>
       (dir.files || []).map((file) => ({

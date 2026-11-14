@@ -67,6 +67,7 @@ contextBridge.exposeInMainWorld("kusic", {
     download: (username: string, filename: string, size: number, trackId?: string) =>
       ipcRenderer.invoke("slskd-download", { username, filename, size, trackId }),
     getDownloads: () => ipcRenderer.invoke("slskd-get-downloads"),
+    getUploads: () => ipcRenderer.invoke("slskd-get-uploads"),
     onDownloadsUpdated: (callback: (transfers: unknown[]) => void) =>
       subscribe("downloads-updated", callback),
     onDownloadEvent: (callback: (event: unknown) => void) => subscribe("download-event", callback),

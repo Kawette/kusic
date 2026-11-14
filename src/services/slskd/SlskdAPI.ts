@@ -190,6 +190,11 @@ export class SlskdAPI {
     return response.data;
   }
 
+  async getUploads(): Promise<unknown[]> {
+    const response = await this.client.get("/api/v0/transfers/uploads");
+    return response.data;
+  }
+
   async cancelDownload(
     username: string,
     id: string,

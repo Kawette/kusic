@@ -4,9 +4,9 @@
 // so results of another search can never appear in it.
 
 import {
-  $, api, baseName, bus, durationBand, durationMatch, errorMessage, escapeHtml, formatBadge,
-  formatDuration, formatSize, formatTime, icon, ICONS, isLossless, normalizeQuery, openModal,
-  showToast, sourceBadge, thumb, toastError,
+  $, api, baseName, bus, closeModal, durationBand, durationMatch, errorMessage, escapeHtml,
+  formatBadge, formatDuration, formatSize, formatTime, icon, ICONS, isLossless, normalizeQuery,
+  openModal, showToast, sourceBadge, thumb, toastError,
 } from './ui.js';
 import { pendingDownloadFor } from './downloads.js';
 import { fallbackQuery, isRelevant, relevanceOf, searchStats, trackQuery } from './query.js';
@@ -141,7 +141,6 @@ let visible = []; // filtered + sorted results currently rendered
 let limit = PAGE_SIZE;
 let showOffTopic = false; // results whose file name lacks the title
 let relevantCount = 0; // relevant results among currentResults (last render)
-const startedDownloads = new Set(); // "username\0filename" started from the modal
 
 async function ensureConnected() {
   const status = await api.slskd.getStatus();
@@ -163,8 +162,6 @@ export async function openSearch(track, options = {}) {
   if (!(await ensureConnected())) return;
 
   shown = { track };
-  // Downloads started earlier are known from the transfers list from now on
-  startedDownloads.clear();
   filters.format.value = options.format || '';
   filters.bitrate.value = '0';
   filters.sort.value = 'duration';
@@ -263,8 +260,6 @@ function applyFilters(results) {
   return filtered.sort(sorters[filters.sort.value] || sorters.quality);
 }
 
-const downloadKey = (r) => `${r.username}\u0000${r.filename}`;
-
 function renderResults(searching) {
   // Off-topic results (other files of the same folder, .nfo, images…) are folded
   const relevance = relevanceOf(shown.track);
@@ -292,7 +287,7 @@ function renderResults(searching) {
     const quality = [r.bitRate && `${r.bitRate} kbps`, r.sampleRate && `${(r.sampleRate / 1000).toFixed(1)} kHz`]
       .filter(Boolean).join(' · ') || '—';
     const duration = durationMatch(r.length && r.length * 1000, target);
-    const started = startedDownloads.has(downloadKey(r)) || pendingDownloadFor(r.username, r.filename);
+    const started = pendingDownloadFor(r.username, r.filename);
     // Unknown (no dot) in older cached results
     const slot = r.hasFreeUploadSlot == null ? '' : r.hasFreeUploadSlot ? 'free' : 'busy';
     const userInfo = [
@@ -339,19 +334,14 @@ resultsList.addEventListener('click', async (e) => {
   const btn = e.target.closest('.result-download-btn');
   if (!btn || btn.disabled) return;
   const result = visible[btn.dataset.index];
-  const key = downloadKey(result);
-  // Marked before the request so a re-render cannot re-enable the button
-  startedDownloads.add(key);
-  btn.disabled = true;
-  btn.classList.add('done');
-  btn.innerHTML = icon(ICONS.check);
+  const trackId = shown?.track?.id;
+  // The choice is made: back to the list, where the download shows up
+  closeModal(modal);
   try {
-    await api.slskd.download(result.username, result.filename, result.size, shown?.track?.id);
+    await api.slskd.download(result.username, result.filename, result.size, trackId);
     showToast('Téléchargement lancé', 'success');
   } catch (err) {
-    startedDownloads.delete(key);
     toastError(err);
-    if (shown) rerender(); // The modal may have been closed meanwhile
   }
 });
 

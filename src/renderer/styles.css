@@ -1234,6 +1234,38 @@ a:hover {
   gap: 16px;
 }
 
+.dl-tabs {
+  display: inline-flex;
+  gap: 4px;
+  align-self: flex-start;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-secondary);
+}
+
+.dl-tab {
+  padding: 6px 14px;
+  border: none;
+  border-radius: calc(var(--radius) - 2px);
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background var(--transition), color var(--transition);
+}
+
+.dl-tab:hover {
+  color: var(--text-primary);
+}
+
+.dl-tab.active {
+  background: var(--bg-active);
+  color: var(--text-primary);
+}
+
 .downloads-summary {
   display: flex;
   gap: 12px;
@@ -1250,25 +1282,6 @@ a:hover {
   background: var(--bg-secondary);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-}
-
-.dl-clear-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 6px 12px;
-  background: transparent;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  color: var(--text-muted);
-  font-size: 12px;
-  cursor: pointer;
-  transition: all 0.15s;
-}
-.dl-clear-btn:hover {
-  color: var(--danger);
-  border-color: var(--danger);
-  background: rgba(255, 71, 87, 0.05);
 }
 
 .dl-summary-value {
@@ -1957,10 +1970,6 @@ button.identify-result-row {
   background: rgba(231, 76, 60, 0.1);
   color: var(--danger);
   font-size: 12px;
-}
-
-.dl-linked {
-  color: var(--accent);
 }
 
 /* ─── Track menu, matches ────────────────────────────────────── */

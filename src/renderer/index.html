@@ -265,18 +265,22 @@
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z" /></svg>
                 Ouvrir le dossier
               </button>
-              <button class="dl-clear-btn" id="dl-clear-failed" hidden>Vider les échecs</button>
-              <button class="dl-clear-btn" id="dl-clear-done" hidden>Vider les terminés</button>
+              <button class="btn-secondary" id="dl-clear-failed" hidden>Vider les échecs</button>
+              <button class="btn-secondary" id="dl-clear-done" hidden>Vider les terminés</button>
             </div>
           </div>
 
           <div class="downloads-content">
+            <div class="dl-tabs" id="dl-tabs">
+              <button class="dl-tab active" data-mode="downloads">Téléchargements</button>
+              <button class="dl-tab" data-mode="uploads" title="Ce que les autres utilisateurs téléchargent dans votre bibliothèque partagée">Envois</button>
+            </div>
             <div class="downloads-summary" id="downloads-summary"></div>
             <div class="download-list-header">
               <span class="dl-col-name">Fichier</span>
               <span class="dl-col-user">Utilisateur</span>
               <span class="dl-col-size">Taille</span>
-              <span class="dl-col-progress">Téléchargement</span>
+              <span class="dl-col-progress">Progression</span>
               <span class="dl-col-state">État</span>
               <span class="dl-col-actions"></span>
             </div>
@@ -285,8 +289,8 @@
                 <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
                   <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" />
                 </svg>
-                <h2>Aucun téléchargement</h2>
-                <p>Les téléchargements lancés depuis Soulseek apparaîtront ici</p>
+                <h2 id="downloads-empty-title">Aucun téléchargement</h2>
+                <p id="downloads-empty-text">Les téléchargements lancés depuis Soulseek apparaîtront ici</p>
               </div>
             </div>
           </div>

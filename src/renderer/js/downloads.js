@@ -12,6 +12,8 @@ const summary = $('#downloads-summary');
 const navBadge = $('#nav-download-badge');
 
 let transfers = [];
+let uploads = []; // What others download from us, fetched while that tab is shown
+let mode = 'downloads'; // or 'uploads'
 let byTrack = new Map(); // trackId -> most relevant transfer
 let rendered = [];
 let renderedSignature = null;
@@ -73,24 +75,32 @@ function setTransfers(next) {
   bus.emit('downloads:changed');
 }
 
+const EMPTY_TEXTS = {
+  downloads: ['Aucun téléchargement', 'Les téléchargements lancés depuis Soulseek apparaîtront ici'],
+  uploads: ['Aucun envoi', 'Les fichiers que les autres utilisateurs téléchargent chez vous apparaîtront ici'],
+};
+
 export function render() {
+  const items = mode === 'uploads' ? uploads : transfers;
   // Rebuilding identical rows would only lose clicks and text selection
-  const signature = JSON.stringify(transfers);
+  const signature = mode + JSON.stringify(items);
   if (signature === renderedSignature) return;
   renderedSignature = signature;
 
-  const active = transfers.filter((t) => !isFinished(t.state));
-  const done = transfers.filter((t) => isSucceeded(t.state));
-  const failed = transfers.filter((t) => isFailed(t.state));
+  const active = items.filter((t) => !isFinished(t.state));
+  const done = items.filter((t) => isSucceeded(t.state));
+  const failed = items.filter((t) => isFailed(t.state));
+  const isDownloads = mode === 'downloads';
 
   summary.innerHTML = `
     <div class="dl-summary-item"><span class="dl-summary-value state-active">${active.length}</span><span class="dl-summary-label">En cours</span></div>
     <div class="dl-summary-item"><span class="dl-summary-value state-done">${done.length}</span><span class="dl-summary-label">Terminés</span></div>
     <div class="dl-summary-item"><span class="dl-summary-value state-error">${failed.length}</span><span class="dl-summary-label">Échoués</span></div>`;
-  $('#dl-clear-done').hidden = done.length === 0;
-  $('#dl-clear-failed').hidden = failed.length === 0;
+  $('#dl-clear-done').hidden = !isDownloads || done.length === 0;
+  $('#dl-clear-failed').hidden = !isDownloads || failed.length === 0;
 
-  if (transfers.length === 0) {
+  if (items.length === 0) {
+    [$('#downloads-empty-title').textContent, $('#downloads-empty-text').textContent] = EMPTY_TEXTS[mode];
     list.replaceChildren(emptyState);
     return;
   }
@@ -105,7 +115,8 @@ export function render() {
     const progress = running
       ? `<span class="dl-speed">${t.averageSpeed > 0 ? formatSpeed(t.averageSpeed) : '—'}</span><div class="dl-progress-bar"><div class="dl-progress-fill" style="width: ${pct}%"></div></div><span class="dl-pct">${pct}%</span>`
       : '';
-    const actions = [
+    // Uploads are only shown: slskd manages them
+    const actions = isDownloads && [
       running && `<button class="dl-action-btn dl-cancel" title="Annuler" data-action="cancel">${icon(ICONS.close)}</button>`,
       failedRow && `<button class="dl-action-btn dl-retry" title="Réessayer avec la même source" data-action="retry">${icon(ICONS.retry)}</button>`,
       (failedRow || isRemotelyQueued(t)) && t.trackId && `<button class="dl-action-btn dl-other" title="Choisir une autre source" data-action="other">${icon(ICONS.search)}</button>`,
@@ -113,12 +124,12 @@ export function render() {
     ].filter(Boolean).join('');
 
     return `<div class="dl-row" data-index="${i}">
-      <span class="dl-col-name" title="${escapeHtml(t.filename)}">${t.trackId ? '<span class="dl-linked" title="Lié à une piste de playlist">♪</span> ' : ''}${escapeHtml(baseName(t.filename))}</span>
+      <span class="dl-col-name" title="${escapeHtml(t.filename)}">${escapeHtml(baseName(t.filename))}</span>
       <span class="dl-col-user">${escapeHtml(t.username)}</span>
       <span class="dl-col-size">${sizeText}</span>
       <span class="dl-col-progress">${progress}</span>
       <span class="dl-col-state ${cls}" title="${escapeHtml(label)}">${escapeHtml(label)}</span>
-      <span class="dl-col-actions">${actions}</span>
+      <span class="dl-col-actions">${actions || ''}</span>
     </div>`;
   }).join('');
 }
@@ -155,6 +166,26 @@ async function clearFinished(kind) {
     toastError(err);
   }
 }
+
+// ─── Uploads tab ────────────────────────────────────────────
+async function refreshUploads() {
+  uploads = await api.slskd.getUploads().catch(() => uploads);
+  if (mode === 'uploads') render();
+}
+
+$('#dl-tabs').addEventListener('click', (e) => {
+  const tab = e.target.closest('[data-mode]');
+  if (!tab || tab.dataset.mode === mode) return;
+  mode = tab.dataset.mode;
+  for (const b of $('#dl-tabs').children) b.classList.toggle('active', b === tab);
+  render();
+  if (mode === 'uploads') refreshUploads();
+});
+
+// Polled only while the uploads are on screen
+setInterval(() => {
+  if (mode === 'uploads' && $('#view-downloads').classList.contains('active')) refreshUploads();
+}, 3000);
 
 $('#dl-clear-done').addEventListener('click', () => clearFinished('succeeded'));
 $('#dl-clear-failed').addEventListener('click', () => clearFinished('failed'));

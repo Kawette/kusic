@@ -8,7 +8,13 @@ import { Library } from "./library/library.js";
 import { coverSchemePrivileges, handleCoverProtocol } from "./library/covers.js";
 import { audioSchemePrivileges, handleAudioProtocol } from "./library/audio.js";
 import { isInside, sanitizeFilename } from "./library/naming.js";
-import { DownloadTracker, isSucceeded } from "./downloads.js";
+import {
+  DownloadTracker,
+  flattenTransfers,
+  isSucceeded,
+  parseUtc,
+  type RawDownloads,
+} from "./downloads.js";
 import {
   getCachedSearch,
   getCacheSummary,
@@ -354,6 +360,17 @@ ipcMain.handle(
 );
 
 ipcMain.handle("slskd-get-downloads", () => (slskd.api ? downloads.refresh() : []));
+
+// What other users download from the shared library (display only)
+const MAX_UPLOADS = 200;
+ipcMain.handle("slskd-get-uploads", async () => {
+  if (!slskd.api) return [];
+  const uploads = flattenTransfers((await slskd.api.getUploads()) as RawDownloads[]);
+  // Oldest first like the downloads, running ones (no end time) last
+  const end = (t: { endedAt?: string }) => (t.endedAt ? parseUtc(t.endedAt) : Number.MAX_SAFE_INTEGER);
+  uploads.sort((a, b) => end(a) - end(b));
+  return uploads.slice(-MAX_UPLOADS).map(({ endedAt: _endedAt, ...t }) => t);
+});
 
 ipcMain.handle(
   "slskd-cancel-download",
