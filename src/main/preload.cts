@@ -41,6 +41,7 @@ contextBridge.exposeInMainWorld("kusic", {
     set: (query: string, results: unknown, stats: unknown) =>
       ipcRenderer.invoke("search-cache-set", query, results, stats),
     summary: () => ipcRenderer.invoke("search-cache-summary"),
+    clear: () => ipcRenderer.invoke("search-cache-clear"),
   },
 
   // Utils

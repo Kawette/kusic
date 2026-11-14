@@ -3,6 +3,7 @@
 import {
   $, api, errorMessage, escapeHtml, icon, ICONS, showToast, toastError, withBusyButton,
 } from './ui.js';
+import { loadCacheSummary } from './search.js';
 
 const fields = {
   clientId: $('#spotify-client-id'),
@@ -265,3 +266,14 @@ $('#btn-slskd-restart').addEventListener('click', async () => {
 });
 
 api.slskd.onStateChanged(refreshStatus);
+
+// ─── Search cache ───────────────────────────────────────────
+$('#btn-clear-search-cache').addEventListener('click', (e) => withBusyButton(e.currentTarget, async () => {
+  try {
+    const count = await api.searchCache.clear();
+    await loadCacheSummary(); // The track list drops its result counts
+    showToast(count > 1 ? `${count} recherches oubliées` : count === 1 ? '1 recherche oubliée' : 'Le cache était déjà vide', 'success');
+  } catch (err) {
+    toastError(err);
+  }
+}));

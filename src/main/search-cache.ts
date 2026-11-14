@@ -82,3 +82,11 @@ export function pruneSearchCache(): void {
   }
   searchCacheIndex.set("searches", searches);
 }
+
+/** Forget every cached search (settings button); returns how many were dropped. */
+export function clearSearchCache(): number {
+  const count = Object.keys(searchCacheIndex.get("searches")).length;
+  fs.rmSync(cacheDir(), { recursive: true, force: true });
+  searchCacheIndex.set("searches", {});
+  return count;
+}

@@ -16,6 +16,7 @@ import {
   type RawDownloads,
 } from "./downloads.js";
 import {
+  clearSearchCache,
   getCachedSearch,
   getCacheSummary,
   pruneSearchCache,
@@ -302,6 +303,7 @@ ipcMain.handle(
   },
 );
 ipcMain.handle("search-cache-summary", () => getCacheSummary());
+ipcMain.handle("search-cache-clear", () => clearSearchCache());
 
 // ─── Slskd ─────────────────────────────────────────────────────
 

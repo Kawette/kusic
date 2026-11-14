@@ -744,6 +744,22 @@ a:hover {
   flex: 1;
 }
 
+.setting-cache-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.setting-cache-row .setting-help {
+  margin-bottom: 0;
+}
+
+.setting-cache-row .btn-secondary {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
 .slskd-restart-notice {
   display: flex;
   align-items: center;
