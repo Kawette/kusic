@@ -1627,11 +1627,9 @@ a:hover {
   font-variant-numeric: tabular-nums;
 }
 
-/* Same orange as the conflict tag and banner text, on a dark tint that also
-   reads well on the active (violet) menu entry */
 .nav-badge-warning {
-  background: #3d2c0c;
-  color: var(--warning);
+  background: var(--warning);
+  margin-left: 4px;
 }
 
 /* ─── Track status column ────────────────────────────────────── */
@@ -2231,4 +2229,17 @@ body.has-player .download-view-list {
 /* Search results whose file name lacks the track title */
 .slskd-result-row.off-topic {
   opacity: 0.55;
+}
+
+/* Missing artwork: a music note instead of an empty square */
+.thumb-empty {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+}
+
+.thumb-empty svg {
+  width: 40%;
+  height: 40%;
 }

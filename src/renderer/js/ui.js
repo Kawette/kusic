@@ -25,6 +25,7 @@ export const ICONS = {
   play: '<polygon points="6 4 20 12 6 20 6 4" fill="currentColor"/>',
   pause: '<rect x="6" y="4" width="4" height="16" fill="currentColor"/><rect x="14" y="4" width="4" height="16" fill="currentColor"/>',
   more: '<circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/>',
+  music: '<path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>',
   warning: '<path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>',
 };
 
@@ -59,7 +60,9 @@ export function sourceBadge(source) {
 
 /** Artwork image, or an empty placeholder of the same size. */
 export function thumb(url, cls) {
-  return url ? `<img class="${cls}" src="${escapeHtml(url)}" alt="" loading="lazy">` : `<span class="${cls}"></span>`;
+  return url
+    ? `<img class="${cls}" src="${escapeHtml(url)}" alt="" loading="lazy">`
+    : `<span class="${cls} thumb-empty">${icon(ICONS.music)}</span>`;
 }
 
 /** Up to this gap, a file has the same length as the track. */
