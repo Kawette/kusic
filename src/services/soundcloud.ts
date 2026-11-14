@@ -74,14 +74,19 @@ export class SoundCloudService {
           cachedClientId = null;
           continue;
         }
-        if (status === 404) throw new Error("Playlist SoundCloud introuvable (privée ou supprimée ?)");
         throw err;
       }
     }
   }
 
   async getPlaylist(url: string): Promise<Playlist> {
-    const data = await this.api<SoundCloudPlaylist>("https://api-v2.soundcloud.com/resolve", { url });
+    const data = await this.api<SoundCloudPlaylist>("https://api-v2.soundcloud.com/resolve", { url })
+      .catch((err) => {
+        if (axios.isAxiosError(err) && err.response?.status === 404) {
+          throw new Error("Playlist SoundCloud introuvable (privée ou supprimée ?)");
+        }
+        throw err;
+      });
 
     if (data.kind !== "playlist") {
       throw new Error("L'URL fournie n'est pas une playlist SoundCloud");

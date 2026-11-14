@@ -323,7 +323,6 @@ a:hover {
   transition: all 0.3s ease;
 }
 
-
 /* ─ Active state ─ */
 #btn-auto-search.active {
   background: var(--success);
@@ -334,7 +333,6 @@ a:hover {
 #btn-auto-search.active:hover {
   background: #1a9b5c;
 }
-
 
 #btn-auto-search.active::after {
   content: '';
@@ -414,6 +412,7 @@ a:hover {
   color: var(--text-muted);
   font-size: 12px;
   text-align: center;
+  position: relative;
 }
 
 .track-title-cell {
@@ -486,6 +485,7 @@ a:hover {
   display: flex;
   align-items: center;
   justify-content: center;
+  position: relative;
 }
 
 .track-download-btn:hover {
@@ -557,6 +557,7 @@ a:hover {
   border-radius: var(--radius-lg);
   overflow: hidden;
   transition: all var(--transition);
+  cursor: pointer;
 }
 
 .playlist-card:hover {
@@ -623,7 +624,6 @@ a:hover {
 .playlist-track-count {
   color: var(--text-secondary);
 }
-
 
 /* ─── Modal ─────────────────────────────────────────────────── */
 .modal-overlay {
@@ -1189,7 +1189,6 @@ a:hover {
   height: 16px;
 }
 
-
 .slskd-loading,
 .slskd-no-results {
   display: flex;
@@ -1284,7 +1283,7 @@ a:hover {
 
 .download-list-header {
   display: grid;
-  grid-template-columns: 2fr 120px 130px 200px 80px 100px;
+  grid-template-columns: minmax(0, 2fr) 120px 130px 180px 150px 100px;
   gap: 12px;
   padding: 8px 16px;
   font-size: 11px;
@@ -1301,7 +1300,7 @@ a:hover {
 
 .dl-row {
   display: grid;
-  grid-template-columns: 2fr 120px 130px 200px 80px 100px;
+  grid-template-columns: minmax(0, 2fr) 120px 130px 180px 150px 100px;
   gap: 12px;
   padding: 10px 16px;
   align-items: center;
@@ -1375,6 +1374,9 @@ a:hover {
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.3px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .dl-col-state.state-active {
@@ -1422,7 +1424,8 @@ a:hover {
   color: var(--danger);
 }
 
-.dl-retry:hover {
+.dl-retry:hover,
+.dl-other:hover {
   border-color: var(--accent);
   color: var(--accent);
 }
@@ -1461,6 +1464,7 @@ a:hover {
   border-radius: var(--radius);
   margin-bottom: 12px;
   flex-shrink: 0;
+  align-items: center;
 }
 
 .identify-label {
@@ -1618,9 +1622,6 @@ a:hover {
 }
 
 /* ─── Track status column ────────────────────────────────────── */
-.track-download-btn {
-  position: relative;
-}
 
 .track-download-btn .result-count {
   position: absolute;
@@ -1708,9 +1709,6 @@ button.identify-icon {
 }
 
 /* ─── Playlist cards ─────────────────────────────────────────── */
-.playlist-card {
-  cursor: pointer;
-}
 
 .playlist-completion {
   display: flex;
@@ -1778,7 +1776,8 @@ button.identify-icon {
   font-size: 12px;
 }
 
-.result-duration {
+.result-duration,
+.identify-result-duration {
   font-size: 12px;
   color: var(--text-secondary);
   font-variant-numeric: tabular-nums;
@@ -1812,12 +1811,6 @@ button.identify-result-row {
   color: inherit;
   font: inherit;
   text-align: left;
-}
-
-.identify-result-duration {
-  font-size: 12px;
-  color: var(--text-secondary);
-  font-variant-numeric: tabular-nums;
 }
 
 /* ─── Conflicts ──────────────────────────────────────────────── */
@@ -1941,7 +1934,7 @@ button.identify-result-row {
 }
 
 /* ─── Track menu, matches ────────────────────────────────────── */
-/* "Inconnu" in another color when a playlist track matches the file */
+/* "Identifiable": an unknown file that matches a playlist track */
 .source-badge.unknown.matched {
   background: rgba(108, 92, 231, 0.2);
   color: var(--accent-hover);
@@ -2060,9 +2053,6 @@ button.identify-result-row {
 }
 
 /* ─── Player ─────────────────────────────────────────────────── */
-.track-num {
-  position: relative;
-}
 
 .track-play-btn {
   display: none;
@@ -2200,9 +2190,6 @@ body.has-player .download-view-list {
 }
 
 /* Round play button at the right of the identified file */
-.identify-source-info {
-  align-items: center;
-}
 
 .identify-play-btn {
   margin-left: auto;

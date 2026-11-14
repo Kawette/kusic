@@ -22,6 +22,8 @@ export const ICONS = {
   trash: '<polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/>',
   export: '<path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/>',
   upgrade: '<line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/>',
+  play: '<polygon points="6 4 20 12 6 20 6 4" fill="currentColor"/>',
+  pause: '<rect x="6" y="4" width="4" height="16" fill="currentColor"/><rect x="14" y="4" width="4" height="16" fill="currentColor"/>',
   more: '<circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/>',
   warning: '<path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>',
 };
@@ -39,13 +41,40 @@ export const SOURCE_LABELS = {
   unknown: 'Inconnu',
 };
 
-export const LOSSLESS = ['FLAC', 'WAV', 'ALAC', 'APE', 'AIFF'];
+const LOSSLESS = ['FLAC', 'WAV', 'AIFF', 'AIF', 'ALAC', 'APE'];
 
 export const isLossless = (format) => LOSSLESS.includes((format || '').toUpperCase());
 
-/** Above this gap, a file's duration is flagged as another version of the track. */
-export const DURATION_TOLERANCE_MS = 15000;
+/** Formats the built-in player can read (keep in sync with MIME in main/library/audio.ts) */
+const PLAYABLE = ['MP3', 'FLAC', 'WAV', 'M4A', 'AAC', 'OGG', 'OPUS'];
 
+export const isPlayable = (format) => PLAYABLE.includes((format || '').toUpperCase());
+
+/** File name of a local or Soulseek path. */
+export const baseName = (filePath) => (filePath || '').split(/[\\/]/).pop();
+
+export function sourceBadge(source) {
+  return `<span class="source-badge ${escapeHtml(source)}">${SOURCE_LABELS[source] || SOURCE_LABELS.unknown}</span>`;
+}
+
+/** Artwork image, or an empty placeholder of the same size. */
+export function thumb(url, cls) {
+  return url ? `<img class="${cls}" src="${escapeHtml(url)}" alt="" loading="lazy">` : `<span class="${cls}"></span>`;
+}
+
+/** Up to this gap, a file has the same length as the track. */
+const DURATION_SAME_MS = 3000;
+/** Above this gap, a file's duration is flagged as another version of the track. */
+const DURATION_TOLERANCE_MS = 15000;
+
+/** 0: same length, 1: close, 2: another version or unknown. */
+export function durationBand(lengthMs, referenceMs) {
+  if (!lengthMs || !referenceMs) return 2;
+  const gap = Math.abs(lengthMs - referenceMs);
+  return gap <= DURATION_SAME_MS ? 0 : gap <= DURATION_TOLERANCE_MS ? 1 : 2;
+}
+
+/** Cache key; must stay identical to normalizeQuery in main/search-cache.ts. */
 export function normalizeQuery(query) {
   return query.toLowerCase().trim().replace(/\s+/g, ' ');
 }
@@ -59,12 +88,12 @@ export function formatDuration(ms) {
 /** Green when a length matches the reference, orange when clearly another version. */
 export function durationMatch(lengthMs, referenceMs) {
   if (!lengthMs || !referenceMs) return { cls: '', title: '' };
-  const gap = Math.abs(lengthMs - referenceMs);
-  if (gap <= 3000) return { cls: 'duration-ok', title: 'Même durée' };
-  if (gap > DURATION_TOLERANCE_MS) {
+  const band = durationBand(lengthMs, referenceMs);
+  if (band === 0) return { cls: 'duration-ok', title: 'Même durée' };
+  if (band === 2) {
     return { cls: 'duration-mismatch', title: `Durée très différente (${formatDuration(referenceMs)}) : probablement une autre version` };
   }
-  return { cls: '', title: `Écart de ${Math.round(gap / 1000)} s` };
+  return { cls: '', title: `Écart de ${Math.round(Math.abs(lengthMs - referenceMs) / 1000)} s` };
 }
 
 export function formatSize(bytes) {
@@ -86,7 +115,7 @@ export function formatTime(timestamp) {
   });
 }
 
-/** "FLAC 44.1 kHz" / "MP3 320 kbps" */
+/** "44.1 kHz" for lossless files, "320 kbps" otherwise */
 export function qualityLabel({ format, bitRate, sampleRate }) {
   if (isLossless(format) && sampleRate) return `${(sampleRate / 1000).toFixed(1)} kHz`;
   if (bitRate) return `${bitRate} kbps`;
@@ -162,7 +191,7 @@ document.addEventListener('error', (e) => {
 // ─── Context menu ───────────────────────────────────────────
 let openMenu = null;
 
-export function closeMenu() {
+function closeMenu() {
   openMenu?.remove();
   openMenu = null;
 }

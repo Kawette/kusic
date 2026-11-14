@@ -9,7 +9,6 @@ import {
   flushSettings, loadSettings, refreshStatus, startStatusPolling, stopStatusPolling,
 } from './settings.js';
 import './conflicts.js';
-import './player.js';
 
 let currentView = 'tracks';
 

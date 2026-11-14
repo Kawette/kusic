@@ -16,6 +16,7 @@ const MAX_RESULTS = 300;
 
 const cacheDir = () => path.join(app.getPath("userData"), "search-cache");
 
+/** Cache key; must stay identical to normalizeQuery in renderer/js/ui.js. */
 export function normalizeQuery(query: string): string {
   return query.toLowerCase().trim().replace(/\s+/g, " ");
 }

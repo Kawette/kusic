@@ -4,9 +4,9 @@
 // so results of another search can never appear in it.
 
 import {
-  $, api, bus, DURATION_TOLERANCE_MS, errorMessage, escapeHtml, formatBadge, durationMatch,
+  $, api, baseName, bus, durationBand, durationMatch, errorMessage, escapeHtml, formatBadge,
   formatDuration, formatSize, formatTime, icon, ICONS, isLossless, normalizeQuery, openModal,
-  showToast, SOURCE_LABELS, toastError,
+  showToast, sourceBadge, thumb, toastError,
 } from './ui.js';
 import { pendingDownloadFor } from './downloads.js';
 import { fallbackQuery, isRelevant, relevanceOf, searchStats, trackQuery } from './query.js';
@@ -132,7 +132,7 @@ const filters = {
   bitrate: $('#result-bitrate'),
   sort: $('#result-sort'),
 };
-const LOADING_HTML = '<div class="slskd-loading"><p>Recherche sur le réseau Soulseek...</p></div>';
+const LOADING_HTML = '<div class="slskd-loading"><p>Recherche sur le réseau Soulseek…</p></div>';
 
 /** What the modal displays: the track, and the session or cached results shown. */
 let shown = null; // { track, key, session, renderedVersion }
@@ -140,6 +140,7 @@ let currentResults = [];
 let visible = []; // filtered + sorted results currently rendered
 let limit = PAGE_SIZE;
 let showOffTopic = false; // results whose file name lacks the title
+let relevantCount = 0; // relevant results among currentResults (last render)
 const startedDownloads = new Set(); // "username\0filename" started from the modal
 
 async function ensureConnected() {
@@ -162,18 +163,20 @@ export async function openSearch(track, options = {}) {
   if (!(await ensureConnected())) return;
 
   shown = { track };
+  // Downloads started earlier are known from the transfers list from now on
+  startedDownloads.clear();
   filters.format.value = options.format || '';
   filters.bitrate.value = '0';
   filters.sort.value = 'duration';
   queryInput.value = trackQuery(track);
   // The playlist track, to compare results against
   targetEl.innerHTML = `
-    ${track.artwork ? `<img class="slskd-target-art" src="${escapeHtml(track.artwork)}" alt="">` : '<span class="slskd-target-art"></span>'}
+    ${thumb(track.artwork, 'slskd-target-art')}
     <div class="slskd-target-info">
       <span class="slskd-target-title">${escapeHtml(track.title)}</span>
       <span class="slskd-target-artist">${escapeHtml(track.artist)}${track.album ? ` · ${escapeHtml(track.album)}` : ''}</span>
     </div>
-    <span class="source-badge ${escapeHtml(track.source)}">${SOURCE_LABELS[track.source] || ''}</span>
+    ${sourceBadge(track.source)}
     <span class="slskd-target-duration" title="Durée de la piste">${formatDuration(track.duration)}</span>
     ${track.format ? `<span class="slskd-target-file" title="Format du fichier actuel">${formatBadge(track.format)}</span>` : ''}`;
 
@@ -193,7 +196,7 @@ async function showQuery(query, { force = false } = {}) {
   visible = [];
   resultsList.innerHTML = LOADING_HTML;
   resultsList.scrollTop = 0;
-  statusEl.textContent = 'Recherche...';
+  statusEl.textContent = 'Recherche…';
 
   if (!force && !sessions.has(key) && cacheSummary.has(key)) {
     const cached = await api.searchCache.get(query);
@@ -213,12 +216,11 @@ async function showQuery(query, { force = false } = {}) {
   renderSession(view.session);
 }
 
-/** "5 résultats pertinents (sur 34)" for the results on screen. */
+/** "5 résultats pertinents (sur 34)" for the results on screen (after a render). */
 function resultCount() {
-  const words = relevanceOf(shown.track);
-  const relevant = currentResults.filter((r) => isRelevant(r, words)).length;
-  const label = `${relevant} résultat${relevant > 1 ? 's' : ''} pertinent${relevant > 1 ? 's' : ''}`;
-  return relevant === currentResults.length ? label : `${label} (sur ${currentResults.length})`;
+  const n = relevantCount;
+  const label = `${n} résultat${n > 1 ? 's' : ''} pertinent${n > 1 ? 's' : ''}`;
+  return n === currentResults.length ? label : `${label} (sur ${currentResults.length})`;
 }
 
 function renderSession(session) {
@@ -234,7 +236,7 @@ function renderSession(session) {
   } else if (session.complete) {
     statusEl.textContent = session.cancelled ? 'Recherche annulée' : `${resultCount()}${retry}`;
   } else {
-    statusEl.textContent = `Recherche... ${session.fileCount} fichiers${retry}`;
+    statusEl.textContent = `Recherche… ${session.fileCount} fichiers${retry}`;
   }
 }
 
@@ -242,12 +244,7 @@ function applyFilters(results) {
   const format = filters.format.value;
   const minBitrate = Number(filters.bitrate.value);
   const target = shown?.track?.duration;
-  // 0: same length, 1: close, 2: other version or unknown
-  const durationBand = (r) => {
-    if (!target || !r.length) return 2;
-    const gap = Math.abs(r.length * 1000 - target);
-    return gap <= 3000 ? 0 : gap <= DURATION_TOLERANCE_MS ? 1 : 2;
-  };
+  const band = (r) => durationBand(r.length && r.length * 1000, target);
 
   const filtered = results.filter((r) => {
     const lossless = isLossless(r.extension);
@@ -259,7 +256,7 @@ function applyFilters(results) {
 
   const sorters = {
     quality: (a, b) => b.quality - a.quality,
-    duration: (a, b) => durationBand(a) - durationBand(b) || b.quality - a.quality,
+    duration: (a, b) => band(a) - band(b) || b.quality - a.quality,
     speed: (a, b) => b.uploadSpeed - a.uploadSpeed,
     size: (a, b) => b.size - a.size,
   };
@@ -270,9 +267,12 @@ const downloadKey = (r) => `${r.username}\u0000${r.filename}`;
 
 function renderResults(searching) {
   // Off-topic results (other files of the same folder, .nfo, images…) are folded
-  const words = relevanceOf(shown.track);
-  const relevant = currentResults.filter((r) => isRelevant(r, words));
-  const offTopic = currentResults.filter((r) => !isRelevant(r, words));
+  const relevance = relevanceOf(shown.track);
+  const relevant = [];
+  const offTopic = [];
+  for (const r of currentResults) (isRelevant(r, relevance) ? relevant : offTopic).push(r);
+  relevantCount = relevant.length;
+  const offTopicSet = new Set(offTopic);
   const all = [...applyFilters(relevant), ...(showOffTopic ? applyFilters(offTopic) : [])];
   visible = all.slice(0, limit);
   const offTopicToggle = offTopic.length
@@ -288,7 +288,7 @@ function renderResults(searching) {
 
   const target = shown?.track?.duration;
   const rows = visible.map((r, i) => {
-    const name = r.filename.split(/[\\/]/).pop();
+    const name = baseName(r.filename);
     const quality = [r.bitRate && `${r.bitRate} kbps`, r.sampleRate && `${(r.sampleRate / 1000).toFixed(1)} kHz`]
       .filter(Boolean).join(' · ') || '—';
     const duration = durationMatch(r.length && r.length * 1000, target);
@@ -296,7 +296,7 @@ function renderResults(searching) {
     const noSlot = r.hasFreeUploadSlot === false; // Unknown in older cached results
     const userInfo = `${noSlot ? 'Pas de slot libre : le téléchargement attendra dans sa file' : 'Slot libre'}${r.queueLength ? ` · file d'attente : ${r.queueLength}` : ''} · ${Math.round(r.uploadSpeed / 1024)} Ko/s`;
 
-    const off = !isRelevant(r, words);
+    const off = offTopicSet.has(r);
     return `<div class="slskd-result-row${off ? ' off-topic' : ''}" ${off ? 'title="Le nom du fichier ne contient pas le titre"' : ''}>
       <span class="result-filename" title="${escapeHtml(r.filename)}">${escapeHtml(name)}</span>
       <span class="result-user" title="${escapeHtml(userInfo)}">${noSlot ? '<span class="no-slot">●</span>' : ''}<span class="result-username">${escapeHtml(r.username)}</span></span>
@@ -346,8 +346,8 @@ resultsList.addEventListener('click', async (e) => {
     showToast('Téléchargement lancé', 'success');
   } catch (err) {
     startedDownloads.delete(key);
-    rerender();
     toastError(err);
+    if (shown) rerender(); // The modal may have been closed meanwhile
   }
 });
 
@@ -391,6 +391,7 @@ export async function toggleAutoSearch(tracks) {
   autoStarting = true;
   try {
     if (!(await ensureConnected())) return;
+    await loadCacheSummary(); // Drop entries that expired during a long session
     const keys = new Set();
     const queue = []; // tracks to search
     for (const track of tracks) {
@@ -410,9 +411,11 @@ export async function toggleAutoSearch(tracks) {
     renderAutoState();
     const workers = Array.from({ length: Math.min(AUTO_SEARCH_CONCURRENCY, queue.length) },
       (_, i) => autoWorker(run, i * AUTO_SEARCH_DELAY));
-    Promise.all(workers).then(() => {
-      if (auto === run) stopAutoSearch(`Recherche terminée (${run.done} pistes)`, 'success');
-    });
+    Promise.all(workers)
+      .then(() => {
+        if (auto === run) stopAutoSearch(`Recherche terminée (${run.done} pistes)`, 'success');
+      })
+      .catch(toastError);
   } catch (err) {
     toastError(err);
   } finally {

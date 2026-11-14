@@ -69,7 +69,7 @@ async function saveNow() {
       restartNotice.hidden = !(status.running || status.starting);
     }
   } catch (err) {
-    showToast(errorMessage(err), 'error');
+    toastError(err);
   }
 }
 
@@ -160,7 +160,7 @@ $('#btn-download-slskd').addEventListener('click', async () => {
 
   btn.hidden = true;
   progressBar.hidden = false;
-  text.textContent = 'Téléchargement en cours...';
+  text.textContent = 'Téléchargement en cours…';
   const unsubscribe = api.slskd.onDownloadProgress((progress) => {
     fill.style.width = `${progress}%`;
     text.textContent = `Téléchargement : ${progress} %`;
@@ -187,13 +187,14 @@ function renderStatus(status) {
     label = `Connecté${status.username ? ` (${status.username})` : ''}`;
     cls = 'connected';
   } else if (status.starting) {
-    label = status.state || 'Démarrage de slskd...';
+    // During startup the state carries the update message, if any
+    label = status.state || 'Démarrage de slskd…';
     cls = 'running';
   } else if (status.connecting) {
-    label = 'Connexion au réseau...';
+    label = 'Connexion au réseau…';
     cls = 'running';
   } else if (status.running) {
-    label = status.state || 'Démarrage...';
+    label = 'Connexion au réseau…'; // status.state is slskd's raw English state
     cls = 'running';
   } else if (status.lastError) {
     cls = 'error';
@@ -211,9 +212,13 @@ function renderStatus(status) {
   lastErrorEl.textContent = status.lastError ? `Dernière erreur slskd : ${status.lastError}` : '';
 }
 
+let statusToken = 0;
+
 export async function refreshStatus() {
+  const token = ++statusToken;
   try {
-    renderStatus(await api.slskd.getStatus());
+    const status = await api.slskd.getStatus();
+    if (token === statusToken) renderStatus(status); // Ignore late answers
   } catch {
     // Main process busy; next poll will retry
   }

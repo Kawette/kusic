@@ -29,8 +29,9 @@ export function samePath(a: string, b: string): boolean {
 
 /** True when `child` is inside `parent` (or is `parent`). */
 export function isInside(child: string, parent: string): boolean {
-  const rel = path.relative(parent.toLowerCase(), child.toLowerCase());
-  return !rel.startsWith("..") && !path.isAbsolute(rel);
+  // path.relative is case-insensitive on Windows
+  const rel = path.relative(parent, child);
+  return rel !== ".." && !rel.startsWith(`..${path.sep}`) && !path.isAbsolute(rel);
 }
 
 // The playlist track ids a file belongs to are stored in its comment tag as

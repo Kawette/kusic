@@ -3,8 +3,8 @@
 // which one to keep. The other one goes to the Windows trash.
 
 import {
-  $, api, bus, closeModal, DURATION_TOLERANCE_MS, escapeHtml, formatBadge, formatDuration,
-  formatSize, formatTime, openModal, qualityLabel, showToast, toastError, withBusyButton,
+  $, api, bus, closeModal, durationBand, escapeHtml, formatBadge, formatDuration, formatSize,
+  formatTime, isPlayable, openModal, qualityLabel, showToast, toastError, withBusyButton,
 } from './ui.js';
 import { loadConflicts } from './downloads.js';
 import { playFile } from './player.js';
@@ -19,8 +19,7 @@ function fileCard(title, file, track) {
     return `<div class="conflict-card"><h4>${title}</h4><p class="muted">Fichier introuvable</p>
       <p class="conflict-path">${escapeHtml(file.path)}</p></div>`;
   }
-  const mismatch = track.duration && file.duration
-    && Math.abs(file.duration - track.duration) > DURATION_TOLERANCE_MS;
+  const mismatch = durationBand(file.duration, track.duration) === 2 && file.duration && track.duration;
   return `<div class="conflict-card">
     <h4>${title}</h4>
     <div class="conflict-quality">${formatBadge(file.format)} <span>${escapeHtml(qualityLabel(file))}</span>
@@ -32,7 +31,7 @@ function fileCard(title, file, track) {
     </dl>
     <p class="conflict-path" title="${escapeHtml(file.path)}">${escapeHtml(file.path)}</p>
     <div class="conflict-buttons">
-      <button class="btn-secondary btn-small" data-play="${escapeHtml(file.path)}">Écouter</button>
+      ${isPlayable(file.format) ? `<button class="btn-secondary btn-small" data-play="${escapeHtml(file.path)}">Écouter</button>` : ''}
       <button class="btn-secondary btn-small" data-show="${escapeHtml(file.path)}">Afficher dans le dossier</button>
     </div>
   </div>`;
@@ -43,6 +42,7 @@ async function openConflict(id) {
   current = conflicts.find((c) => c.id === id);
   if (!current) return;
   const { track } = current;
+  const existingGone = !current.existingFile.exists;
 
   body.innerHTML = `
     <p class="modal-desc">
@@ -57,7 +57,7 @@ async function openConflict(id) {
       ${fileCard('Fichier existant', current.existingFile, track)}
     </div>
     <div class="modal-actions">
-      <button class="btn-secondary" data-choice="keep-existing">Garder l'existant</button>
+      <button class="btn-secondary" data-choice="keep-existing" ${existingGone ? 'disabled title="Le fichier existant a disparu"' : ''}>Garder l'existant</button>
       <button class="btn-primary" data-choice="replace">Remplacer par le nouveau</button>
     </div>
     <p class="setting-help">Le fichier écarté est envoyé à la corbeille Windows.</p>`;
@@ -67,27 +67,33 @@ async function openConflict(id) {
 body.addEventListener('click', async (e) => {
   const show = e.target.closest('[data-show]');
   if (show) {
-    api.showInFolder(show.dataset.show);
+    api.showInFolder(show.dataset.show).catch(toastError);
     return;
   }
   const play = e.target.closest('[data-play]');
-  if (play) {
+  if (play && current) {
     const title = play.closest('.conflict-card').querySelector('h4').textContent;
     playFile(play.dataset.play, { title, artist: `${current.track.artist} — ${current.track.title}` });
     return;
   }
   const btn = e.target.closest('[data-choice]');
   if (!btn || !current || busy) return;
+  const conflict = current;
   // One decision at a time: both choices are locked while it runs
   busy = true;
   body.querySelectorAll('[data-choice]').forEach((b) => { b.disabled = true; });
   try {
-    await withBusyButton(btn, () => api.resolveConflict(current.id, btn.dataset.choice));
+    await withBusyButton(btn, () => api.resolveConflict(conflict.id, btn.dataset.choice));
     showToast(btn.dataset.choice === 'replace' ? 'Fichier remplacé' : 'Fichier existant conservé', 'success');
-    closeModal(modal);
+    // The modal may have been reopened for another conflict meanwhile
+    if (current === conflict) closeModal(modal);
   } catch (err) {
     toastError(err);
-    body.querySelectorAll('[data-choice]').forEach((b) => { b.disabled = false; });
+    if (current === conflict) {
+      body.querySelectorAll('[data-choice]').forEach((b) => {
+        b.disabled = b.dataset.choice === 'keep-existing' && !conflict.existingFile.exists;
+      });
+    }
   } finally {
     busy = false;
   }

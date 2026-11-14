@@ -7,7 +7,7 @@ import { store } from "./store.js";
 import { Library } from "./library/library.js";
 import { coverSchemePrivileges, handleCoverProtocol } from "./library/covers.js";
 import { audioSchemePrivileges, handleAudioProtocol } from "./library/audio.js";
-import { isInside } from "./library/naming.js";
+import { isInside, sanitizeFilename } from "./library/naming.js";
 import { DownloadTracker, isSucceeded } from "./downloads.js";
 import {
   getCachedSearch,
@@ -139,7 +139,9 @@ if (!app.requestSingleInstanceLock()) {
     handleAudioProtocol(() => store.get("soulseek").libraryPath);
     pruneSearchCache();
     createWindow();
-    // Pick up files changed outside Kusic (also migrates older index formats)
+    // A slskd left running by a crashed session must not keep sharing the library
+    slskd.killOrphan().catch(() => {});
+    // Pick up files changed outside Kusic
     library.rescan().catch((err) => console.error("[Kusic] Initial scan failed:", err));
     autoStartSlskd();
   });
@@ -158,10 +160,6 @@ app.on("will-quit", (e) => {
   } finally {
     slskd.stop().finally(() => app.quit());
   }
-});
-
-app.on("activate", () => {
-  if (BrowserWindow.getAllWindows().length === 0) createWindow();
 });
 
 // ─── Settings ──────────────────────────────────────────────────
@@ -243,9 +241,9 @@ ipcMain.handle("export-playlist", async (_, playlistId: string) => {
     title: "Exporter la playlist",
     defaultPath: path.join(
       store.get("soulseek").libraryPath || app.getPath("music"),
-      `${playlist.name.replace(/[<>:"/\\|?*]/g, "")}.m3u`,
+      `${sanitizeFilename(playlist.name) || "playlist"}.m3u8`,
     ),
-    filters: [{ name: "Playlist M3U", extensions: ["m3u", "m3u8"] }],
+    filters: [{ name: "Playlist M3U (UTF-8)", extensions: ["m3u8", "m3u"] }],
   });
   if (result.canceled || !result.filePath) return null;
   return library.exportM3U(playlistId, result.filePath);
@@ -288,8 +286,14 @@ ipcMain.handle("show-in-folder", (_, filePath: string) => {
 ipcMain.handle("search-cache-get", (_, query: string) => getCachedSearch(query));
 ipcMain.handle(
   "search-cache-set",
-  (_, query: string, results: SlskdSearchResult[], stats: SearchStats) =>
-    setCachedSearch(query, results, stats),
+  (_, query: string, results: SlskdSearchResult[], stats: SearchStats) => {
+    if (!Array.isArray(results)) throw new Error("Résultats invalides");
+    // Only the expected fields: the entry also holds the cache file name
+    setCachedSearch(text(query, "recherche"), results, {
+      relevant: Number(stats?.relevant) || 0,
+      best: String(stats?.best ?? "").slice(0, 10),
+    });
+  },
 );
 ipcMain.handle("search-cache-summary", () => getCacheSummary());
 
@@ -298,7 +302,6 @@ ipcMain.handle("search-cache-summary", () => getCacheSummary());
 ipcMain.handle("slskd-check-platform", () => ({
   supported: slskd.isPlatformSupported(),
   platform: process.platform,
-  arch: process.arch,
 }));
 
 ipcMain.handle("slskd-get-version", () => slskd.getVersionInfo());

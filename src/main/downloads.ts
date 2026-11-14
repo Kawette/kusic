@@ -26,6 +26,12 @@ export type DownloadEvent =
 
 const keyOf = (username: string, filename: string) => `${username}\u0000${filename}`;
 
+/** slskd times are UTC but may come without a time zone suffix. */
+function parseUtc(time: string): number {
+  return Date.parse(/(Z|[+-]\d\d:?\d\d)$/.test(time) ? time : `${time}Z`);
+}
+
+// Same predicate as the renderer's (no shared module between both sides)
 export function isSucceeded(state: string): boolean {
   return /succeeded/i.test(state);
 }
@@ -63,7 +69,6 @@ function flattenTransfers(users: RawDownloads[]): TrackedTransfer[] {
 
 const isRemotelyQueued = (t: Transfer) => /queued/i.test(t.state) && /remotely/i.test(t.state);
 
-const sizeOf = (p: string) => fs.promises.stat(p).then((s) => s.size, () => -1);
 
 export class DownloadTracker {
   private timer: NodeJS.Timeout | null = null;
@@ -127,8 +132,10 @@ export class DownloadTracker {
     this.persist();
   }
 
+  /** Still waiting to be placed (entries that gave up do not count). */
   isPending(username: string, filename: string): boolean {
-    return keyOf(username, filename) in this.pending;
+    const entry = this.pending[keyOf(username, filename)];
+    return !!entry && entry.attempts < MAX_ATTEMPTS;
   }
 
   /** Give a failed placement another round of attempts (on retry). */
@@ -159,7 +166,10 @@ export class DownloadTracker {
     const api = this.getApi();
     if (!api) return [];
 
+    const generation = this.generation;
     const raw = flattenTransfers((await api.getDownloads()) as RawDownloads[]);
+    // Stopped while the request was in flight: drop the stale list
+    if (generation !== this.generation) return [];
     const transfers: Transfer[] = raw.map(({ endedAt: _endedAt, ...t }) => ({
       ...t,
       trackId: this.pending[keyOf(t.username, t.filename)]?.trackId,
@@ -212,10 +222,10 @@ export class DownloadTracker {
       const entry = this.pending[key];
       if (!entry || !isSucceeded(t.state) || entry.attempts >= MAX_ATTEMPTS) continue;
       // An older finished transfer of the same file (re-download): wait for the new one
-      if (t.endedAt && Date.parse(t.endedAt) < entry.requestedAt) continue;
+      if (t.endedAt && parseUtc(t.endedAt) < entry.requestedAt) continue;
 
       try {
-        const filePath = await this.locate(t);
+        const filePath = await this.locate(t, entry.requestedAt);
         if (!filePath) {
           // slskd may still be moving the file out of the incomplete folder
           throw new Error("Fichier téléchargé introuvable dans la bibliothèque");
@@ -251,27 +261,26 @@ export class DownloadTracker {
     if (changed) this.persist();
   }
 
-  /** Local path of a finished download: where slskd puts it, else by name + size. */
-  private async locate(t: Transfer): Promise<string | null> {
+  /**
+   * Local path of a finished download: where slskd puts it, or the copy it
+   * renamed on a name collision ("name_<ticks>.ext"). Among same-size
+   * candidates, the newest one written after the request wins.
+   */
+  private async locate(t: Transfer, requestedAt: number): Promise<string | null> {
     const root = this.downloadsDir();
     if (!root) return null;
-    const matches = async (p: string) => {
-      const size = await sizeOf(p);
-      return size >= 0 && (!t.size || size === t.size);
-    };
-
     const expected = slskdLocalPath(root, t.filename);
-    if (isInside(expected, root) && (await matches(expected))) return expected;
+    if (!isInside(expected, root)) return null;
 
-    // slskd renames on collisions; fall back to the newest same-size file
     const stem = path.basename(expected, path.extname(expected)).toLowerCase();
     const candidates: { path: string; mtime: number }[] = [];
     for (const p of await listAudioFiles(root)) {
-      if (!path.basename(p).toLowerCase().startsWith(stem) || !(await matches(p))) continue;
+      if (!path.basename(p).toLowerCase().startsWith(stem)) continue;
       const stats = await fs.promises.stat(p).catch(() => null);
-      if (stats) candidates.push({ path: p, mtime: stats.mtimeMs });
+      if (stats && (!t.size || stats.size === t.size)) candidates.push({ path: p, mtime: stats.mtimeMs });
     }
     candidates.sort((a, b) => b.mtime - a.mtime);
-    return candidates[0]?.path ?? null;
+    const recent = candidates.find((c) => c.mtime >= requestedAt - 60_000);
+    return (recent ?? candidates[0])?.path ?? null;
   }
 }

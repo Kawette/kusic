@@ -4,9 +4,8 @@
 // Otherwise the user searches by name. Linking only happens on click.
 
 import {
-  $, api, bus, closeModal, durationMatch, escapeHtml, formatBadge, formatDuration, icon, openModal,
-  showToast, SOURCE_LABELS,
-  toastError,
+  $, api, bus, closeModal, durationMatch, escapeHtml, formatBadge, formatDuration, icon, ICONS,
+  isPlayable, openModal, showToast, sourceBadge, thumb, toastError,
 } from './ui.js';
 import { isPlaying, playTrack } from './player.js';
 
@@ -44,17 +43,20 @@ function render() {
       : 'Aucune correspondance évidente. Tapez un titre ou un artiste pour chercher.';
   }
 
-  resultsList.innerHTML = shown.map((t, i) => `
+  resultsList.innerHTML = shown.map((t, i) => {
+    const duration = durationMatch(t.duration, source.duration);
+    return `
     <button class="identify-result-row" data-index="${i}">
-      ${t.artwork ? `<img class="identify-result-thumb" src="${escapeHtml(t.artwork)}" alt="">` : '<span class="identify-result-thumb"></span>'}
+      ${thumb(t.artwork, 'identify-result-thumb')}
       <span class="identify-result-info">
         <span class="identify-result-title">${escapeHtml(t.title)}</span>
         <span class="identify-result-artist">${escapeHtml(t.artist)}</span>
       </span>
-      <span class="identify-result-duration ${durationMatch(t.duration, source.duration).cls}" title="${durationMatch(t.duration, source.duration).title}">${formatDuration(t.duration)}</span>
-      <span class="source-badge ${escapeHtml(t.source)}">${SOURCE_LABELS[t.source] || SOURCE_LABELS.unknown}</span>
+      <span class="identify-result-duration ${duration.cls}" title="${duration.title}">${formatDuration(t.duration)}</span>
+      ${sourceBadge(t.source)}
       ${t.format ? `<span title="Cette piste a déjà un fichier : le lier ouvrira une comparaison pour choisir lequel garder">${formatBadge(t.format)}</span>` : ''}
-    </button>`).join('');
+    </button>`;
+  }).join('');
 }
 
 export async function openIdentify(track) {
@@ -65,6 +67,7 @@ export async function openIdentify(track) {
   resultsList.innerHTML = '';
   hint.textContent = '';
   renderPlayButton();
+  playBtn.hidden = !isPlayable(track.format);
   openModal(modal, () => { source = null; });
 
   const tracks = (await api.getTracks({ source: 'all' })).filter((t) => t.playlistIds);
@@ -75,12 +78,10 @@ export async function openIdentify(track) {
 }
 
 const playBtn = $('#identify-play');
-const PLAY_ICON = '<polygon points="6 4 20 12 6 20 6 4" fill="currentColor"/>';
-const PAUSE_ICON = '<rect x="6" y="4" width="4" height="16" fill="currentColor"/><rect x="14" y="4" width="4" height="16" fill="currentColor"/>';
 
 function renderPlayButton() {
   const playing = !!source && isPlaying(source.filePath);
-  playBtn.innerHTML = icon(playing ? PAUSE_ICON : PLAY_ICON, 14);
+  playBtn.innerHTML = icon(playing ? ICONS.pause : ICONS.play, 14);
   playBtn.title = playing ? 'Pause' : 'Écouter le fichier';
 }
 
@@ -96,19 +97,21 @@ searchInput.addEventListener('input', () => {
 resultsList.addEventListener('click', async (e) => {
   const row = e.target.closest('.identify-result-row');
   if (!row || !source || linking) return;
+  const file = source;
   const target = shown[row.dataset.index];
   linking = true;
   row.classList.add('linking');
   resultsList.querySelectorAll('.identify-result-row').forEach((r) => { r.disabled = true; });
   try {
-    const result = await api.linkUnknownToTrack(source.id, target.id);
+    const result = await api.linkUnknownToTrack(file.id, target.id);
     showToast(
       result.status === 'conflict'
         ? 'Fichier lié, mais en conflit : à résoudre dans Téléchargements'
         : 'Morceau identifié et lié',
       result.status === 'conflict' ? 'error' : 'success',
     );
-    closeModal(modal);
+    // The modal may have been reopened for another file meanwhile
+    if (source === file) closeModal(modal);
   } catch (err) {
     row.classList.remove('linking');
     resultsList.querySelectorAll('.identify-result-row').forEach((r) => { r.disabled = false; });

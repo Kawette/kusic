@@ -1,8 +1,8 @@
 // ─── Playlists view ─────────────────────────────────────────
 
 import {
-  $, api, closeModal, errorMessage, escapeHtml, icon, ICONS, openModal, showToast, toastError,
-  withBusyButton,
+  $, api, closeModal, errorMessage, escapeHtml, icon, ICONS, openModal, showToast, SOURCE_LABELS,
+  toastError, withBusyButton,
 } from './ui.js';
 import { refreshPlaylists, setPlaylistOptions, showPlaylist } from './tracks.js';
 
@@ -14,14 +14,18 @@ const addError = $('#add-error');
 const confirmBtn = $('#btn-confirm-add');
 
 let playlists = [];
+let loadToken = 0;
 
 export async function loadPlaylists() {
+  const token = ++loadToken;
   try {
-    playlists = await api.getPlaylists();
+    const result = await api.getPlaylists();
+    if (token !== loadToken) return; // A newer load is in flight
+    playlists = result;
     setPlaylistOptions(playlists);
     render();
   } catch (err) {
-    showToast(errorMessage(err), 'error');
+    toastError(err);
   }
 }
 
@@ -37,7 +41,7 @@ function render() {
     <div class="playlist-card" data-id="${escapeHtml(p.id)}" title="Voir les pistes">
       <div class="playlist-cover">
         ${p.artwork ? `<img src="${escapeHtml(p.artwork)}" alt="" loading="lazy">` : ''}
-        <span class="playlist-source-tag ${escapeHtml(p.source)}">${escapeHtml(p.source)}</span>
+        <span class="playlist-source-tag ${escapeHtml(p.source)}">${SOURCE_LABELS[p.source] || escapeHtml(p.source)}</span>
       </div>
       <div class="playlist-info">
         <div class="playlist-name" title="${escapeHtml(p.name)}">${escapeHtml(p.name)}</div>
@@ -69,7 +73,7 @@ grid.addEventListener('click', async (e) => {
       await api.removePlaylist(playlist.id);
       showToast('Playlist supprimée', 'success');
     } catch (err) {
-      showToast(errorMessage(err), 'error');
+      toastError(err);
     }
   } else if (action === 'export') {
     try {

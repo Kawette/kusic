@@ -16,7 +16,8 @@ import {
   samePath,
 } from "./naming.js";
 
-export const AUDIO_EXTENSIONS = [".mp3", ".flac", ".wav", ".m4a", ".aac", ".ogg", ".wma"];
+/** Indexed audio formats (keep in sync with AUDIO_EXTENSIONS in renderer/js/query.js) */
+const AUDIO_EXTENSIONS = [".mp3", ".flac", ".wav", ".aiff", ".aif", ".m4a", ".aac", ".ogg", ".opus", ".wma"];
 const PARSE_CONCURRENCY = 4;
 
 function commentText(comment: unknown): string {
@@ -67,7 +68,7 @@ export async function parseAudioFile(filePath: string): Promise<Track | null> {
   }
 }
 
-/** All audio files under `root`, skipping hidden folders such as .incomplete. */
+/** All audio files under `root`, skipping hidden folders (e.g. a legacy .incomplete). */
 export async function listAudioFiles(root: string): Promise<string[]> {
   const found: string[] = [];
   const walk = async (dir: string) => {
@@ -135,45 +136,40 @@ export function cachedLocalFiles(): Track[] {
   return Object.values(scanCache.get("files")).map((e) => e.track);
 }
 
-export interface TagValues {
-  title: string;
-  artist: string;
-  album: string;
-  linkedTrackIds: string[];
+/** Open a file's tags, always releasing the handle (Windows locks open files). */
+function withTags<T>(filePath: string, fn: (file: taglib.File) => T): T {
+  const file = taglib.File.createFromPath(filePath);
+  try {
+    return fn(file);
+  } finally {
+    file.dispose();
+  }
 }
 
 /** Write title/artist/album and the KUSIC link tag. Throws on failure. */
-export function writeTags(filePath: string, values: TagValues): void {
-  const file = taglib.File.createFromPath(filePath);
-  try {
+export function writeTags(
+  filePath: string,
+  values: { title: string; artist: string; album: string; linkedTrackIds: string[] },
+): void {
+  withTags(filePath, (file) => {
     file.tag.title = values.title;
     file.tag.performers = [values.artist];
     file.tag.album = values.album;
     file.tag.comment = formatKusicComment(file.tag.comment, values.linkedTrackIds);
     file.save();
-  } finally {
-    file.dispose();
-  }
+  });
 }
 
 /** Update only the KUSIC link tag of a file. */
 export function writeLinkedIds(filePath: string, ids: string[]): void {
-  const file = taglib.File.createFromPath(filePath);
-  try {
+  withTags(filePath, (file) => {
     file.tag.comment = formatKusicComment(file.tag.comment, ids);
     file.save();
-  } finally {
-    file.dispose();
-  }
+  });
 }
 
 export function readLinkedIds(filePath: string): string[] {
-  const file = taglib.File.createFromPath(filePath);
-  try {
-    return parseKusicIds(file.tag.comment);
-  } finally {
-    file.dispose();
-  }
+  return withTags(filePath, (file) => parseKusicIds(file.tag.comment));
 }
 
 /** Move a file (across drives if needed), then prune emptied folders. */

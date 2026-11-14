@@ -54,11 +54,15 @@ export function extractPlaylistId(url: string): string {
 
 /** Turn API failures into messages the user can act on. */
 function explain(err: unknown): Error {
-  if (!axios.isAxiosError(err) || !err.response) {
-    return new Error(`Spotify injoignable : ${(err as Error).message}`);
-  }
+  if (!axios.isAxiosError(err)) return err as Error;
+  if (!err.response) return new Error(`Spotify injoignable : ${err.message}`);
+  // The token endpoint answers 400 for bad credentials
+  const tokenRequest = err.config?.url?.includes("accounts.spotify.com");
   switch (err.response.status) {
     case 400:
+      return tokenRequest
+        ? new Error("Identifiants Spotify invalides (vérifiez Client ID et Client Secret)")
+        : new Error("Requête Spotify invalide (HTTP 400)");
     case 401:
       return new Error("Identifiants Spotify invalides (vérifiez Client ID et Client Secret)");
     case 403:

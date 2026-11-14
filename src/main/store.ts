@@ -40,7 +40,7 @@ export const libraryStore = new Store<LibraryData>({
   defaults: { playlists: [], tracks: [], conflicts: [] },
 });
 
-// Older versions kept the library inside config.json, next to the secrets
+// Older versions (and pre-migration backups) kept the library inside config.json
 {
   const legacy = store as unknown as Store<Record<string, unknown>>;
   const playlists = legacy.get("playlists") as Playlist[] | undefined;
@@ -50,7 +50,7 @@ export const libraryStore = new Store<LibraryData>({
   }
 }
 
-// Large or frequently written data lives in separate files so that saving
+// Other large or frequently written data also lives in separate files so that saving
 // it does not rewrite the main config.
 
 export interface ScanCacheEntry {

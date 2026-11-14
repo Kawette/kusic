@@ -1,7 +1,7 @@
 // ─── Local audio player ─────────────────────────────────────
 // Plays library files (streamed by the main process via kusic-audio://).
 
-import { $, bus, escapeHtml, icon, showToast } from './ui.js';
+import { $, baseName, bus, escapeHtml, icon, ICONS, showToast, thumb } from './ui.js';
 
 const bar = $('#player');
 const audio = $('#player-audio');
@@ -10,9 +10,6 @@ const seek = $('#player-seek');
 const currentEl = $('#player-current');
 const totalEl = $('#player-total');
 const infoEl = $('#player-info');
-
-const PLAY = '<polygon points="6 4 20 12 6 20 6 4" fill="currentColor"/>';
-const PAUSE = '<rect x="6" y="4" width="4" height="16" fill="currentColor"/><rect x="14" y="4" width="4" height="16" fill="currentColor"/>';
 
 let currentPath = null;
 
@@ -40,14 +37,16 @@ export function playFile(filePath, meta = {}) {
   currentPath = filePath;
   audio.src = audioUrl(filePath);
   infoEl.innerHTML = `
-    ${meta.artwork ? `<img class="player-art" src="${escapeHtml(meta.artwork)}" alt="">` : '<span class="player-art"></span>'}
+    ${thumb(meta.artwork, 'player-art')}
     <span class="player-text">
-      <span class="player-title">${escapeHtml(meta.title || filePath.split(/[\\/]/).pop())}</span>
+      <span class="player-title">${escapeHtml(meta.title || baseName(filePath))}</span>
       <span class="player-artist">${escapeHtml(meta.artist || '')}</span>
     </span>`;
   bar.hidden = false;
   document.body.classList.add('has-player');
-  audio.play().catch((err) => showToast(`Lecture impossible : ${err.message}`, 'error'));
+  // Interrupted plays (another track clicked) reject harmlessly; real
+  // failures are reported once by the "error" listener below
+  audio.play().catch(() => {});
 }
 
 export function playTrack(track) {
@@ -74,10 +73,11 @@ toggleBtn.addEventListener('click', togglePlayback);
 $('#player-close').addEventListener('click', stop);
 
 const renderState = () => {
-  toggleBtn.innerHTML = icon(audio.paused ? PLAY : PAUSE, 18);
+  toggleBtn.innerHTML = icon(audio.paused ? ICONS.play : ICONS.pause, 18);
   toggleBtn.title = audio.paused ? 'Lecture' : 'Pause';
   bus.emit('player:changed');
 };
+renderState();
 audio.addEventListener('play', renderState);
 audio.addEventListener('pause', renderState);
 audio.addEventListener('ended', renderState);

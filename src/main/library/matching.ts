@@ -1,8 +1,9 @@
 // ─── Strict file ↔ playlist track matching (pure) ──────────
 // Only near-certain matches are suggested: same title (ignoring noise such
 // as "Free Download" or "[CAT001]") and at least one common artist, with a
-// compatible duration. Remixes / edits are part of the title, so a remix
-// never matches the original.
+// compatible duration (an untagged file without artist needs the same
+// length). Remix info is part of the title, so a remix never matches the
+// original.
 
 const PREMIERE_PREFIX = /^[^:]*premiere\s*:\s*/i;
 const NOISE = /\b(free (download|dl)|premiere|out now|official( (audio|video))?|original mix|clip|hq|explicit)\b/g;

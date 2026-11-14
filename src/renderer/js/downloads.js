@@ -3,7 +3,7 @@
 // finished files); this view only displays them.
 
 import {
-  $, api, bus, escapeHtml, formatSize, formatSpeed, icon, ICONS, showToast, toastError,
+  $, api, baseName, bus, escapeHtml, formatSize, formatSpeed, icon, ICONS, showToast, toastError,
 } from './ui.js';
 
 const list = $('#download-view-list');
@@ -17,39 +17,40 @@ const conflictsList = $('#conflicts-list');
 let transfers = [];
 let byTrack = new Map(); // trackId -> most relevant transfer
 let rendered = [];
-let renderedSignature = '';
+let renderedSignature = null;
 
+// ─── Transfer states (slskd: "Queued, Remotely", "Completed, Succeeded"…) ──
+// The main process has its own isSucceeded: there is no module shared by both sides.
 export const isFinished = (state) => /completed/i.test(state || '');
-const isRemotelyQueued = (t) => /queued/i.test(t.state) && /remotely/i.test(t.state);
 const isSucceeded = (state) => /succeeded/i.test(state || '');
 const isFailed = (state) => isFinished(state) && !isSucceeded(state);
+export const isTransferring = (t) => /inprogress|initializing/i.test(t.state);
+const isRemotelyQueued = (t) => /queued/i.test(t.state) && /remotely/i.test(t.state);
+
+/** Label of a transfer that is waiting (shared with the track list). */
+export function waitingLabel(t) {
+  // slskd waits before retrying a failed attempt; the transfer is queued again
+  if (t.attempts > 0) return `Relance (n°${t.attempts + 1})`;
+  if (isRemotelyQueued(t)) return t.placeInQueue > 0 ? `En file (${t.placeInQueue}ᵉ)` : 'En file';
+  if (/requested/i.test(t.state)) return 'Demandé';
+  return 'En attente';
+}
 
 const PRESENCE_LABELS = { offline: 'hors ligne', away: 'absent' };
 
-function stateDisplay({ state, attempts, placeInQueue, userPresence }) {
-  const s = (state || '').toLowerCase();
-  // slskd waits before retrying a failed attempt; the transfer is queued again
-  if (attempts > 0 && !s.includes('completed') && !s.includes('inprogress')) {
-    return { label: `Nouvelle tentative (n°${attempts + 1})`, cls: 'state-queued' };
-  }
+function stateDisplay(t) {
+  const s = (t.state || '').toLowerCase();
   if (s.includes('succeeded')) return { label: 'Terminé', cls: 'state-done' };
   if (s.includes('cancelled')) return { label: 'Annulé', cls: 'state-error' };
   if (s.includes('timedout')) return { label: 'Expiré', cls: 'state-error' };
   if (s.includes('rejected')) return { label: 'Refusé', cls: 'state-error' };
   if (s.includes('completed')) return { label: 'Erreur', cls: 'state-error' };
-  if (s.includes('inprogress') || s.includes('initializing')) return { label: 'En cours', cls: 'state-active' };
-  if (s.includes('queued') && s.includes('remote')) {
-    const place = placeInQueue > 0 ? ` (${placeInQueue}ᵉ)` : '';
-    const presence = PRESENCE_LABELS[userPresence];
-    return {
-      label: `File distante${place}${presence ? ` · ${presence}` : ''}`,
-      cls: userPresence === 'offline' ? 'state-error' : 'state-queued',
-    };
-  }
-  if (s.includes('queued') && s.includes('local')) return { label: 'File locale', cls: 'state-queued' };
-  if (s.includes('queued')) return { label: 'En attente', cls: 'state-queued' };
-  if (s.includes('requested')) return { label: 'Demandé', cls: 'state-queued' };
-  return { label: state || '?', cls: '' };
+  if (isTransferring(t)) return { label: 'En cours', cls: 'state-active' };
+  const presence = isRemotelyQueued(t) ? PRESENCE_LABELS[t.userPresence] : '';
+  return {
+    label: `${waitingLabel(t)}${presence ? ` · ${presence}` : ''}`,
+    cls: t.userPresence === 'offline' && presence ? 'state-error' : 'state-queued',
+  };
 }
 
 /** True if this file is already being (or was) downloaded successfully. */
@@ -80,7 +81,7 @@ function setTransfers(next) {
 export function render() {
   // Rebuilding identical rows would only lose clicks and text selection
   const signature = JSON.stringify(transfers);
-  if (signature === renderedSignature && list.firstElementChild !== emptyState) return;
+  if (signature === renderedSignature) return;
   renderedSignature = signature;
 
   const active = transfers.filter((t) => !isFinished(t.state));
@@ -101,7 +102,6 @@ export function render() {
 
   rendered = [...active, ...failed.reverse(), ...done.reverse()];
   list.innerHTML = rendered.map((t, i) => {
-    const name = t.filename.split(/[\\/]/).pop() || t.filename;
     const { label, cls } = stateDisplay(t);
     const pct = Math.round(t.percentComplete);
     const running = !isFinished(t.state);
@@ -113,16 +113,16 @@ export function render() {
     const actions = [
       running && `<button class="dl-action-btn dl-cancel" title="Annuler" data-action="cancel">${icon(ICONS.close)}</button>`,
       failedRow && `<button class="dl-action-btn dl-retry" title="Réessayer avec la même source" data-action="retry">${icon(ICONS.retry)}</button>`,
-      (failedRow || isRemotelyQueued(t)) && t.trackId && `<button class="dl-action-btn dl-retry" title="Choisir une autre source" data-action="other">${icon(ICONS.search)}</button>`,
+      (failedRow || isRemotelyQueued(t)) && t.trackId && `<button class="dl-action-btn dl-other" title="Choisir une autre source" data-action="other">${icon(ICONS.search)}</button>`,
       failedRow && `<button class="dl-action-btn dl-cancel" title="Retirer de la liste" data-action="remove">${icon(ICONS.close)}</button>`,
     ].filter(Boolean).join('');
 
-    return `<div class="dl-row ${cls}" data-index="${i}">
-      <span class="dl-col-name" title="${escapeHtml(t.filename)}">${t.trackId ? '<span class="dl-linked" title="Lié à une piste de playlist">♪</span> ' : ''}${escapeHtml(name)}</span>
+    return `<div class="dl-row" data-index="${i}">
+      <span class="dl-col-name" title="${escapeHtml(t.filename)}">${t.trackId ? '<span class="dl-linked" title="Lié à une piste de playlist">♪</span> ' : ''}${escapeHtml(baseName(t.filename))}</span>
       <span class="dl-col-user">${escapeHtml(t.username)}</span>
       <span class="dl-col-size">${sizeText}</span>
       <span class="dl-col-progress">${progress}</span>
-      <span class="dl-col-state ${cls}">${escapeHtml(label)}</span>
+      <span class="dl-col-state ${cls}" title="${escapeHtml(label)}">${escapeHtml(label)}</span>
       <span class="dl-col-actions">${actions}</span>
     </div>`;
   }).join('');
@@ -132,16 +132,20 @@ list.addEventListener('click', async (e) => {
   const btn = e.target.closest('[data-action]');
   const t = btn && rendered[btn.closest('.dl-row').dataset.index];
   if (!t) return;
+  const { action } = btn.dataset;
+  // Opening the search changes nothing here: keep the button usable
+  if (action === 'other') {
+    bus.emit('search:open-track', t.trackId);
+    return;
+  }
   btn.disabled = true;
   try {
-    const { action } = btn.dataset;
     if (action === 'cancel') await api.slskd.cancelDownload(t.username, t.id, t.filename, false);
     if (action === 'remove') await api.slskd.cancelDownload(t.username, t.id, t.filename, true);
     if (action === 'retry') {
       await api.slskd.retryDownload(t.username, t.id, t.filename, t.size);
       showToast('Téléchargement relancé');
     }
-    if (action === 'other') bus.emit('search:open-track', t.trackId);
   } catch (err) {
     btn.disabled = false;
     toastError(err);
@@ -151,7 +155,7 @@ list.addEventListener('click', async (e) => {
 async function clearFinished(kind) {
   try {
     const count = await api.slskd.clearDownloads(kind);
-    showToast(`${count} téléchargement(s) retiré(s) de la liste`);
+    showToast(count > 1 ? `${count} téléchargements retirés de la liste` : `${count} téléchargement retiré de la liste`);
   } catch (err) {
     toastError(err);
   }
@@ -159,10 +163,13 @@ async function clearFinished(kind) {
 
 $('#dl-clear-done').addEventListener('click', () => clearFinished('succeeded'));
 $('#dl-clear-failed').addEventListener('click', () => clearFinished('failed'));
-$('#btn-open-library').addEventListener('click', () => api.openLibraryFolder());
+$('#btn-open-library').addEventListener('click', () => api.openLibraryFolder().catch(toastError));
 
 // ─── Conflicts ──────────────────────────────────────────────
+let conflictsToken = 0;
+
 export async function loadConflicts() {
+  const token = ++conflictsToken;
   let conflicts;
   try {
     conflicts = await api.getConflicts();
@@ -170,6 +177,7 @@ export async function loadConflicts() {
     toastError(err);
     return [];
   }
+  if (token !== conflictsToken) return conflicts; // A newer load is in flight
   conflictBadge.textContent = conflicts.length;
   conflictBadge.hidden = conflicts.length === 0;
   conflictsSection.hidden = conflicts.length === 0;
@@ -194,7 +202,7 @@ api.slskd.onDownloadsUpdated(setTransfers);
 // (The library-changed event that follows refreshes tracks and conflicts.)
 api.slskd.onDownloadEvent((event) => {
   if (event.type === 'placed') {
-    showToast(`Rangé : ${event.filePath.split(/[\/]/).pop()}`, 'success');
+    showToast(`Rangé : ${baseName(event.filePath)}`, 'success');
   } else if (event.type === 'conflict') {
     showToast('Conflit de fichier : à résoudre dans Téléchargements', 'error');
   } else if (event.type === 'error') {

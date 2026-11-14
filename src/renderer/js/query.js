@@ -8,10 +8,11 @@ const VERSION = /\b(remix|rmx|edit|bootleg|rework|vip|flip|remake|mashup|dub)\b/
 /** Version suffixes that only narrow the search (" - Extended Mix", "Free DL"…). */
 const NOISE_SUFFIX = /\b(original|extended|radio|club|mix|version|remaster(ed)?|instrumental|free (dl|download))\b/i;
 
-export const AUDIO_EXTENSIONS = ['flac', 'mp3', 'wav', 'aiff', 'aif', 'm4a', 'aac', 'ogg', 'opus', 'alac', 'ape', 'wma'];
+/** Formats Kusic indexes (keep in sync with AUDIO_EXTENSIONS in main/library/files.ts) */
+const AUDIO_EXTENSIONS = ['flac', 'mp3', 'wav', 'aiff', 'aif', 'm4a', 'aac', 'ogg', 'opus', 'wma'];
 
 /** Lower-case words without accents or punctuation, as peers name their files. */
-export function searchWords(text) {
+function searchWords(text) {
   return (text || '')
     .toLowerCase()
     .replace(/ø/g, 'o').replace(/æ/g, 'ae').replace(/œ/g, 'oe').replace(/ß/g, 'ss').replace(/ł/g, 'l')

@@ -93,7 +93,7 @@
           <div class="view-controls">
             <div class="search-box">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
-              <input type="text" id="search-input" placeholder="Rechercher une piste..." />
+              <input type="text" id="search-input" placeholder="Rechercher une piste…" />
             </div>
             <select id="filter-source" class="select-control">
               <option value="all">Toutes les sources</option>
@@ -202,7 +202,7 @@
             </div>
 
             <!-- Soulseek settings -->
-            <div class="settings-group" id="soulseek-settings">
+            <div class="settings-group">
               <h3>
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="#6c5ce7"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" /></svg>
                 Soulseek (slskd)
@@ -211,7 +211,7 @@
 
               <div class="platform-warning" id="platform-warning" hidden></div>
 
-              <div class="slskd-status-bar" id="slskd-status-bar">
+              <div class="slskd-status-bar">
                 <span class="status-indicator" id="slskd-status-indicator"></span>
                 <span id="slskd-status-text">Non connecté</span>
                 <button class="btn-small" id="btn-slskd-toggle">Démarrer</button>
@@ -241,7 +241,7 @@
               </div>
 
               <div class="slskd-binary-status" id="slskd-binary-status">
-                <span id="slskd-binary-text">Vérification de slskd...</span>
+                <span id="slskd-binary-text">Vérification de slskd…</span>
                 <button class="btn-small btn-accent" id="btn-download-slskd" hidden>Télécharger slskd</button>
                 <div class="progress-bar" id="slskd-download-progress" hidden>
                   <div class="progress-fill" id="slskd-download-fill"></div>
@@ -322,7 +322,7 @@
         <div class="slskd-target" id="slskd-target"></div>
 
         <div class="slskd-search-bar">
-          <input type="text" class="slskd-search-input" id="slskd-search-query" placeholder="Recherche..." />
+          <input type="text" class="slskd-search-input" id="slskd-search-query" placeholder="Recherche…" />
           <button class="slskd-search-btn" id="slskd-search-btn" title="Relancer la recherche (ignore le cache)">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
           </button>
@@ -380,7 +380,7 @@
           <button class="player-btn identify-play-btn" id="identify-play" title="Écouter le fichier"></button>
         </div>
         <div class="identify-search-bar">
-          <input type="text" class="identify-search-input" id="identify-search-input" placeholder="Chercher un titre ou un artiste dans vos playlists..." />
+          <input type="text" class="identify-search-input" id="identify-search-input" placeholder="Chercher un titre ou un artiste dans vos playlists…" />
         </div>
         <p class="identify-hint" id="identify-hint"></p>
         <div class="identify-results-list" id="identify-results-list"></div>
@@ -400,7 +400,6 @@
       </div>
     </div>
 
-    <!-- Toast notifications -->
     <!-- Local audio player -->
     <div class="player" id="player" hidden>
       <div class="player-info" id="player-info"></div>
@@ -414,6 +413,7 @@
       <audio id="player-audio" preload="metadata"></audio>
     </div>
 
+    <!-- Toast notifications -->
     <div class="toast-container" id="toast-container" aria-live="polite"></div>
 
     <script type="module" src="js/main.js"></script>

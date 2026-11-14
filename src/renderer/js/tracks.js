@@ -1,11 +1,12 @@
 // ─── Tracks view ────────────────────────────────────────────
 
 import {
-  $, api, bus, errorMessage, escapeHtml, formatBadge, formatDuration, formatSize, icon, ICONS,
-  isLossless, qualityLabel, showMenu, showToast, SOURCE_LABELS, SPINNER, toastError, withBusyButton,
+  $, api, baseName, bus, escapeHtml, formatBadge, formatDuration, formatSize, icon, ICONS,
+  isLossless, isPlayable, qualityLabel, showMenu, showToast, sourceBadge, SPINNER, thumb, toastError,
+  withBusyButton,
 } from './ui.js';
 import { cachedStats, isSearching, openSearch, toggleAutoSearch } from './search.js';
-import { isFinished, transferForTrack } from './downloads.js';
+import { isFinished, isTransferring, transferForTrack, waitingLabel } from './downloads.js';
 import { openIdentify } from './identify.js';
 import { isPlaying, playTrack } from './player.js';
 
@@ -39,7 +40,7 @@ export async function loadTracks() {
     byId = new Map(tracks.map((t) => [t.id, t]));
     render();
   } catch (err) {
-    showToast(errorMessage(err), 'error');
+    toastError(err);
   }
   updateStats();
 }
@@ -89,7 +90,7 @@ function statusHtml(track) {
       [track.format.toUpperCase(), qualityLabel(track), track.bitDepth && `${track.bitDepth} bits`]
         .filter(Boolean).join(' · '),
       formatSize(track.fileSize),
-      track.filePath?.split(/[\\/]/).pop(),
+      baseName(track.filePath),
     ].filter((line) => line && line !== '—').join('\n');
     const upgrade = !isLossless(track.format) && track.playlistIds
       ? `<button class="track-download-btn" data-action="upgrade" title="Chercher une meilleure qualité (FLAC)">${icon(ICONS.upgrade, 16)}</button>`
@@ -105,9 +106,7 @@ function statusHtml(track) {
     if (transfer.userPresence === 'offline') {
       return `<button class="track-status-btn failed" data-action="download" title="L'utilisateur qui doit envoyer ce fichier est hors ligne : choisir une autre source">Hors ligne</button>`;
     }
-    const label = /inprogress/i.test(transfer.state) ? `↓ ${pct}%`
-      : transfer.attempts ? 'Relance'
-        : transfer.placeInQueue > 0 ? `En file (${transfer.placeInQueue}ᵉ)` : 'En file';
+    const label = isTransferring(transfer) ? `↓ ${pct}%` : waitingLabel(transfer);
     return `<span class="track-progress" title="${escapeHtml(transfer.state)}">${label}</span>`;
   }
   if (transfer) {
@@ -135,15 +134,15 @@ function rowHtml(track, i) {
   const canIdentify = !track.playlistIds && track.filePath;
   const badge = track.suggestedTrackIds
     ? `<span class="source-badge unknown matched" title="Un morceau de vos playlists correspond à ce fichier : cliquez sur la loupe pour vérifier et lier">Identifiable</span>`
-    : `<span class="source-badge ${escapeHtml(track.source)}">${SOURCE_LABELS[track.source] || SOURCE_LABELS.unknown}</span>`;
+    : sourceBadge(track.source);
   return `
     <div class="track-row" data-track-id="${escapeHtml(track.id)}">
       <span class="track-num">
         <span class="track-index">${i + 1}</span>
-        ${track.filePath ? `<button class="track-play-btn" data-action="play" title="Écouter">${icon(PLAY_ICON, 14)}</button>` : ''}
+        ${track.filePath && isPlayable(track.format) ? `<button class="track-play-btn" data-action="play" title="Écouter">${icon(ICONS.play, 14)}</button>` : ''}
       </span>
       <div class="track-title-cell">
-        ${track.artwork ? `<img class="track-thumb" src="${escapeHtml(track.artwork)}" alt="" loading="lazy">` : '<span class="track-thumb"></span>'}
+        ${thumb(track.artwork, 'track-thumb')}
         <div class="track-info">
           <span class="track-title" title="${escapeHtml(track.title)}">${escapeHtml(track.title)}</span>
           <span class="track-artist" title="${escapeHtml(track.artist)}">${escapeHtml(track.artist)}</span>
@@ -198,9 +197,7 @@ function scheduleStatusRefresh() {
 
 bus.on('search:changed', scheduleStatusRefresh);
 
-// Highlight the row being played
-const PLAY_ICON = '<polygon points="6 4 20 12 6 20 6 4" fill="currentColor"/>';
-const PAUSE_ICON = '<rect x="6" y="4" width="4" height="16" fill="currentColor"/><rect x="14" y="4" width="4" height="16" fill="currentColor"/>';
+/** Highlight the row being played. */
 function markPlaying() {
   for (const row of trackList.querySelectorAll('.track-row')) {
     const track = byId.get(row.dataset.trackId);
@@ -209,7 +206,7 @@ function markPlaying() {
     row.classList.toggle('playing', playing);
     const btn = row.querySelector('.track-play-btn');
     if (btn) {
-      btn.innerHTML = icon(playing ? PAUSE_ICON : PLAY_ICON, 14);
+      btn.innerHTML = icon(playing ? ICONS.pause : ICONS.play, 14);
       btn.title = playing ? 'Pause' : 'Écouter';
     }
   }
@@ -250,8 +247,10 @@ function showTrackMenu(track, x, y) {
     items.push({ label: 'Identifier…', action: () => openIdentify(track).catch(toastError) });
   }
   if (track.filePath) {
-    items.push({ label: isPlaying(track.filePath) ? 'Pause' : 'Écouter', action: () => playTrack(track) });
-    items.push({ label: 'Afficher dans le dossier', action: () => api.showInFolder(track.filePath) });
+    if (isPlayable(track.format)) {
+      items.push({ label: isPlaying(track.filePath) ? 'Pause' : 'Écouter', action: () => playTrack(track) });
+    }
+    items.push({ label: 'Afficher dans le dossier', action: () => api.showInFolder(track.filePath).catch(toastError) });
     items.push('separator');
     items.push({
       label: 'Supprimer le fichier (corbeille)',
@@ -263,7 +262,7 @@ function showTrackMenu(track, x, y) {
 }
 
 async function deleteFile(track) {
-  const name = track.filePath.split(/[\\/]/).pop();
+  const name = baseName(track.filePath);
   if (!confirm(`Envoyer « ${name} » à la corbeille ?`)) return;
   try {
     await api.deleteLocalFile(track.id);

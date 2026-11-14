@@ -151,12 +151,11 @@ export class Library {
   }
 
   getStats() {
-    const { playlists, tracks, conflicts } = this.data;
+    const { playlists, tracks } = this.data;
     return {
       totalPlaylists: playlists.length,
       totalTracks: tracks.length,
       missingTracks: tracks.filter((t) => t.playlistIds && !t.format).length,
-      conflicts: conflicts.length,
     };
   }
 
@@ -186,7 +185,7 @@ export class Library {
   }
 
   async addPlaylist(url: string): Promise<Playlist> {
-    const playlist = await fetchPlaylist(url.trim());
+    const playlist = await fetchPlaylist(url);
     return this.exclusive(async () => {
       const { playlists } = this.data;
       if (playlists.some((p) => p.id === playlist.id || p.url === playlist.url)) {
@@ -202,7 +201,6 @@ export class Library {
     return this.exclusive(async () => {
       this.save("playlists", this.data.playlists.filter((p) => p.id !== id));
       await this.rebuildNow({ rescan: false });
-      return this.getPlaylists();
     });
   }
 
@@ -398,9 +396,11 @@ export class Library {
       const ids = [...new Set([...existingIds, conflict.trackId])];
 
       if (choice === "keep-existing") {
-        if (fs.existsSync(conflict.existingPath) && ids.length !== existingIds.length) {
-          writeLinkedIds(conflict.existingPath, ids);
+        // Never trash the incoming file when there is nothing left to keep
+        if (!fs.existsSync(conflict.existingPath)) {
+          throw new Error("Le fichier existant a disparu : gardez le nouveau");
         }
+        if (ids.length !== existingIds.length) writeLinkedIds(conflict.existingPath, ids);
         await shell.trashItem(conflict.newPath);
         cleanEmptyDirs(path.dirname(conflict.newPath), root);
       } else {
@@ -415,7 +415,10 @@ export class Library {
           throw new Error(`Un autre fichier occupe déjà ${path.basename(target)}`);
         }
         writeLinkedIds(conflict.newPath, ids);
-        if (fs.existsSync(conflict.existingPath)) await shell.trashItem(conflict.existingPath);
+        if (fs.existsSync(conflict.existingPath)) {
+          await shell.trashItem(conflict.existingPath);
+          cleanEmptyDirs(path.dirname(conflict.existingPath), root);
+        }
         if (!samePath(target, conflict.newPath)) moveFile(conflict.newPath, target, root);
       }
 

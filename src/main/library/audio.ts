@@ -9,13 +9,14 @@ import path from "path";
 import { Readable } from "stream";
 import { isInside } from "./naming.js";
 
-export const AUDIO_SCHEME = "kusic-audio";
+const AUDIO_SCHEME = "kusic-audio";
 
 export const audioSchemePrivileges = {
   scheme: AUDIO_SCHEME,
   privileges: { standard: true, secure: true, stream: true, supportFetchAPI: true },
 };
 
+/** Formats Chromium can play (keep in sync with PLAYABLE in renderer/js/ui.js) */
 const MIME: Record<string, string> = {
   ".mp3": "audio/mpeg",
   ".flac": "audio/flac",
@@ -23,6 +24,7 @@ const MIME: Record<string, string> = {
   ".m4a": "audio/mp4",
   ".aac": "audio/aac",
   ".ogg": "audio/ogg",
+  ".opus": "audio/ogg",
 };
 
 /** Parse a "bytes=start-end" header against a file size; null if invalid. */
@@ -43,6 +45,7 @@ export function handleAudioProtocol(libraryRoot: () => string): void {
 
     const stats = await fs.promises.stat(filePath).catch(() => null);
     if (!stats?.isFile()) return new Response(null, { status: 404 });
+    if (stats.size === 0) return new Response(null, { status: 200, headers: { "Content-Type": type } });
 
     const range = request.headers.has("range")
       ? parseRange(request.headers.get("range"), stats.size)

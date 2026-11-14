@@ -74,19 +74,18 @@ export class SlskdManager {
   downloadsDir = "";
   /** Last error reported by slskd, shown in the settings */
   lastError = "";
-  /** Called when the process exits or becomes ready */
+  /** Called on every state change (starting, updating, running, stopped) */
   onStateChange: () => void = () => {};
   /** Download progress of the slskd binary (0-100) */
   onBinaryProgress: (percent: number) => void = () => {};
   /** True while the pinned slskd version is being installed before a start */
   private updating = false;
 
+  /** Release flavor matching this machine */
+  private target = process.arch === "arm64" ? "win-arm64" : "win-x64";
   private resourcesPath = path.join(app.getPath("userData"), "slskd");
-  private binDir = path.join(
-    this.resourcesPath,
-    "bin",
-    process.arch === "arm64" ? "win-arm64" : "win-x64",
-  );
+  private binDir = path.join(this.resourcesPath, "bin", this.target);
+  private installing: Promise<void> | null = null;
   private binaryPath = path.join(this.binDir, "slskd.exe");
   private configPath = path.join(this.resourcesPath, "slskd.yml");
   private dataPath = path.join(this.resourcesPath, "data");
@@ -139,12 +138,17 @@ export class SlskdManager {
     await this.installBinary();
   }
 
-  /** Download the pinned release and replace the installed one (old files deleted). */
-  private async installBinary(): Promise<void> {
-    const onProgress = this.onBinaryProgress;
+  /** Download the pinned release and replace the installed one (shared by concurrent callers). */
+  private installBinary(): Promise<void> {
+    this.installing ??= this.doInstallBinary().finally(() => {
+      this.installing = null;
+    });
+    return this.installing;
+  }
 
-    const target = process.arch === "arm64" ? "win-arm64" : "win-x64";
-    const url = `https://github.com/slskd/slskd/releases/download/${SLSKD_VERSION}/slskd-${SLSKD_VERSION}-${target}.zip`;
+  private async doInstallBinary(): Promise<void> {
+    const onProgress = this.onBinaryProgress;
+    const url = `https://github.com/slskd/slskd/releases/download/${SLSKD_VERSION}/slskd-${SLSKD_VERSION}-${this.target}.zip`;
     const zipPath = path.join(this.resourcesPath, "slskd.zip");
     const extractDir = `${this.binDir}.new`;
     fs.mkdirSync(this.resourcesPath, { recursive: true });
@@ -348,7 +352,7 @@ export class SlskdManager {
   }
 
   /** Kill a slskd left running by a previous Kusic session. */
-  private async killOrphan(): Promise<void> {
+  async killOrphan(): Promise<void> {
     if (!fs.existsSync(this.pidPath)) return;
     const pid = Number(fs.readFileSync(this.pidPath, "utf8"));
     fs.rmSync(this.pidPath, { force: true });
@@ -385,7 +389,8 @@ export class SlskdManager {
       if (this.child === child) {
         this.child = null;
         this.state = "stopped";
-        fs.rmSync(this.pidPath, { force: true });
+        // Keep the pid file if the process survived, so the next start kills it
+        if (child.exitCode !== null || child.signalCode !== null) fs.rmSync(this.pidPath, { force: true });
         this.onStateChange();
       }
     })().finally(() => {
