@@ -27,6 +27,9 @@ contextBridge.exposeInMainWorld("kusic", {
   getStats: () => ipcRenderer.invoke("get-stats"),
   linkUnknownToTrack: (fileTrackId: string, targetTrackId: string) =>
     ipcRenderer.invoke("link-unknown-to-track", fileTrackId, targetTrackId),
+  deleteLocalFile: (trackId: string) => ipcRenderer.invoke("delete-local-file", trackId),
+  setTrackIgnored: (trackId: string, ignored: boolean) =>
+    ipcRenderer.invoke("set-track-ignored", trackId, ignored),
   onLibraryChanged: (callback: () => void) => subscribe("library-changed", callback),
 
   // Conflicts

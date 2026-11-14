@@ -2,7 +2,7 @@
 
 import {
   $, api, bus, errorMessage, escapeHtml, formatBadge, formatDuration, formatSize, icon, ICONS,
-  isLossless, qualityLabel, showToast, SOURCE_LABELS, SPINNER, toastError, withBusyButton,
+  isLossless, qualityLabel, showMenu, showToast, SOURCE_LABELS, SPINNER, toastError, withBusyButton,
 } from './ui.js';
 import { cachedCount, isSearching, openSearch, toggleAutoSearch } from './search.js';
 import { isFinished, transferForTrack } from './downloads.js';
@@ -122,8 +122,11 @@ function rowHtml(track, i) {
   const status = statusHtml(track);
   statusCache.set(track.id, status);
   const canIdentify = !track.playlistIds && track.filePath;
+  const badge = track.suggestedTrackIds
+    ? `<span class="source-badge matched" title="Un morceau de vos playlists correspond à ce fichier : cliquez sur la loupe pour vérifier et lier">● Correspondance</span>`
+    : `<span class="source-badge ${escapeHtml(track.source)}">${SOURCE_LABELS[track.source] || SOURCE_LABELS.unknown}</span>`;
   return `
-    <div class="track-row" data-track-id="${escapeHtml(track.id)}">
+    <div class="track-row${track.ignored ? ' ignored' : ''}" data-track-id="${escapeHtml(track.id)}">
       <span class="track-num">${i + 1}</span>
       <div class="track-title-cell">
         ${track.artwork ? `<img class="track-thumb" src="${escapeHtml(track.artwork)}" alt="" loading="lazy">` : '<span class="track-thumb"></span>'}
@@ -134,11 +137,12 @@ function rowHtml(track, i) {
       </div>
       <span class="track-album" title="${escapeHtml(track.album)}">${escapeHtml(track.album || '—')}</span>
       <span class="track-source">
-        <span class="source-badge ${escapeHtml(track.source)}">${SOURCE_LABELS[track.source] || SOURCE_LABELS.unknown}</span>
+        ${badge}
         ${canIdentify ? `<button class="identify-icon" data-action="identify" title="Identifier ce morceau">${icon(ICONS.search, 12)}</button>` : ''}
       </span>
       <span class="track-duration">${formatDuration(track.duration)}</span>
       <span class="track-actions">${status}</span>
+      <button class="track-menu-btn" data-action="menu" title="Plus d'actions">⋯</button>
     </div>`;
 }
 
@@ -189,7 +193,67 @@ trackList.addEventListener('click', (e) => {
   if (action === 'upgrade') openSearch(track, { format: 'flac' }).catch(toastError);
   if (action === 'identify') openIdentify(track).catch(toastError);
   if (action === 'conflict') bus.emit('conflict:open', track.conflictId);
+  if (action === 'menu') {
+    const rect = actionEl.getBoundingClientRect();
+    showTrackMenu(track, rect.right, rect.bottom);
+  }
 });
+
+trackList.addEventListener('contextmenu', (e) => {
+  const track = byId.get(e.target.closest('.track-row')?.dataset.trackId);
+  if (!track) return;
+  e.preventDefault();
+  showTrackMenu(track, e.clientX, e.clientY);
+});
+
+/** Per-track actions; anything destructive asks for confirmation. */
+function showTrackMenu(track, x, y) {
+  const items = [];
+  if (track.playlistIds && !track.ignored) {
+    items.push({ label: 'Rechercher sur Soulseek', action: () => openSearch(track).catch(toastError) });
+  }
+  if (!track.playlistIds && track.filePath) {
+    items.push({ label: 'Identifier…', action: () => openIdentify(track).catch(toastError) });
+  }
+  if (track.filePath) {
+    items.push({ label: 'Afficher dans le dossier', action: () => api.showInFolder(track.filePath) });
+    items.push('separator');
+    items.push({
+      label: 'Supprimer le fichier (corbeille)',
+      danger: true,
+      action: () => deleteFile(track),
+    });
+  }
+  if (track.playlistIds) {
+    if (items.length && items[items.length - 1] !== 'separator') items.push('separator');
+    items.push(track.ignored
+      ? { label: 'Ne plus ignorer', action: () => setIgnored(track, false) }
+      : { label: 'Ignorer cette piste', action: () => setIgnored(track, true) });
+  }
+  showMenu(x, y, items);
+}
+
+async function deleteFile(track) {
+  const name = track.filePath.split(/[\\/]/).pop();
+  if (!confirm(`Envoyer « ${name} » à la corbeille ?`)) return;
+  try {
+    await api.deleteLocalFile(track.id);
+    showToast('Fichier envoyé à la corbeille', 'success');
+  } catch (err) {
+    toastError(err);
+  }
+}
+
+async function setIgnored(track, ignored) {
+  try {
+    await api.setTrackIgnored(track.id, ignored);
+    showToast(ignored
+      ? 'Piste ignorée (filtre « Ignorées » pour la retrouver)'
+      : 'La piste n’est plus ignorée', 'success');
+  } catch (err) {
+    toastError(err);
+  }
+}
 
 // ─── Controls ───────────────────────────────────────────────
 let searchTimeout;

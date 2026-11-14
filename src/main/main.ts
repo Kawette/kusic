@@ -53,10 +53,10 @@ slskd.onStateChange = () => {
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
-    width: 1200,
-    height: 800,
-    minWidth: 900,
-    minHeight: 600,
+    width: 1400,
+    height: 900,
+    minWidth: 1000,
+    minHeight: 640,
     backgroundColor: "#0a0a0f",
     titleBarStyle: "hidden",
     titleBarOverlay: {
@@ -230,6 +230,10 @@ ipcMain.handle("export-playlist", async (_, playlistId: string) => {
 
 ipcMain.handle("link-unknown-to-track", (_, fileTrackId: string, targetTrackId: string) =>
   library.linkUnknown(fileTrackId, targetTrackId),
+);
+ipcMain.handle("delete-local-file", (_, trackId: string) => library.deleteLocalFile(trackId));
+ipcMain.handle("set-track-ignored", (_, trackId: string, ignored: boolean) =>
+  library.setIgnored(trackId, ignored === true),
 );
 
 ipcMain.handle("get-conflicts", () => library.getConflicts());

@@ -15,7 +15,7 @@ interface SearchResponse {
   responseCount: number;
   responses?: Array<{
     username: string;
-    freeUploadSlots: number;
+    hasFreeUploadSlot: boolean;
     uploadSpeed: number;
     queueLength?: number;
     files?: Array<{
@@ -68,9 +68,10 @@ export class SlskdAPI {
     return { id: response.data.id };
   }
 
+  /** Stop a running search (DELETE would remove it while slskd finalizes it). */
   async cancelSearch(searchId: string): Promise<void> {
     try {
-      await this.client.delete(`/api/v0/searches/${encodeURIComponent(searchId)}`);
+      await this.client.put(`/api/v0/searches/${encodeURIComponent(searchId)}`);
     } catch {
       // Ignore errors - search might already be done
     }
@@ -101,12 +102,12 @@ export class SlskdAPI {
     if (!searchData.responses) return results;
 
     for (const response of searchData.responses) {
-      const { username, freeUploadSlots, uploadSpeed, queueLength } = response;
+      const { username, hasFreeUploadSlot, uploadSpeed, queueLength } = response;
 
       for (const file of response.files || []) {
         results.push({
           username,
-          freeUploadSlots,
+          hasFreeUploadSlot,
           uploadSpeed,
           queueLength,
           filename: file.filename,

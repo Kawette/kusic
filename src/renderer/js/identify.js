@@ -1,9 +1,10 @@
-// ─── Identify modal (assisted, user-confirmed) ──────────────
-// Suggests playlist tracks ranked by similarity with an unknown file; the
-// file is only linked when the user clicks a suggestion.
+// ─── Identify modal (user-confirmed) ────────────────────────
+// Shows the playlist tracks that strictly match the file (computed by the
+// main process: same title and artist, compatible length), usually one.
+// Otherwise the user searches by name. Linking only happens on click.
 
 import {
-  $, api, escapeHtml, formatDuration, openModal, closeModal, showToast, SOURCE_LABELS,
+  $, api, closeModal, escapeHtml, formatDuration, openModal, showToast, SOURCE_LABELS,
   toastError,
 } from './ui.js';
 
@@ -11,56 +12,32 @@ const modal = $('#identify-modal');
 const sourceTitle = $('#identify-source-title');
 const searchInput = $('#identify-search-input');
 const resultsList = $('#identify-results-list');
+const hint = $('#identify-hint');
 const MAX_RESULTS = 20;
 
 let source = null; // the unknown file track
-let candidates = []; // { track, tokens, text } for each playlist track
+let playlistTracks = [];
 let shown = [];
 let linking = false;
 
-function tokens(text) {
-  return new Set(
-    (text || '')
-      .toLowerCase()
-      .normalize('NFD').replace(/[̀-ͯ]/g, '')
-      .replace(/\b(feat|ft|featuring|original|mix|remaster(ed)?|version)\b/g, ' ')
-      .split(/[^a-z0-9]+/)
-      .filter((w) => w.length > 1),
-  );
-}
-
-/** 0..1+ similarity between the file and a playlist track. */
-function similarity(fileTokens, fileDuration, candidate) {
-  let common = 0;
-  for (const t of candidate.tokens) if (fileTokens.has(t)) common++;
-  const union = fileTokens.size + candidate.tokens.size - common;
-  let score = union ? common / union : 0;
-  const { track } = candidate;
-  if (fileDuration && track.duration) {
-    const gap = Math.abs(fileDuration - track.duration);
-    if (gap < 3000) score += 0.25;
-    else if (gap > 20000) score -= 0.15;
-  }
-  if (!track.format) score += 0.05; // Prefer tracks still missing a file
-  return score;
-}
-
 function render() {
-  const query = searchInput.value.trim().toLowerCase();
-  const fileTokens = tokens(query || `${source.artist} ${source.title}`);
-  const matches = (c) =>
-    !query || c.text.includes(query) || [...c.tokens].some((w) => fileTokens.has(w));
+  const words = searchInput.value.trim().toLowerCase().split(/\s+/).filter(Boolean);
 
-  shown = candidates
-    .filter(matches)
-    .map((c) => ({ track: c.track, score: similarity(fileTokens, source.duration, c) }))
-    .sort((a, b) => b.score - a.score)
-    .slice(0, MAX_RESULTS)
-    .map((c) => c.track);
-
-  if (shown.length === 0) {
-    resultsList.innerHTML = '<p class="identify-hint">Aucun résultat</p>';
-    return;
+  if (words.length) {
+    // Plain name search: every typed word must appear
+    shown = playlistTracks
+      .filter((t) => {
+        const text = `${t.artist} ${t.title} ${t.album}`.toLowerCase();
+        return words.every((w) => text.includes(w));
+      })
+      .slice(0, MAX_RESULTS);
+    hint.textContent = shown.length ? 'Cliquez sur un morceau pour lier le fichier.' : 'Aucun morceau ne correspond.';
+  } else {
+    const ids = source.suggestedTrackIds || [];
+    shown = ids.map((id) => playlistTracks.find((t) => t.id === id)).filter(Boolean);
+    hint.textContent = shown.length
+      ? 'Correspondance trouvée (même titre, même artiste, durée proche). Vérifiez puis cliquez pour lier.'
+      : 'Aucune correspondance évidente. Tapez un titre ou un artiste pour chercher.';
   }
 
   resultsList.innerHTML = shown.map((t, i) => `
@@ -72,25 +49,22 @@ function render() {
       </span>
       <span class="identify-result-duration">${formatDuration(t.duration)}</span>
       <span class="source-badge ${escapeHtml(t.source)}">${SOURCE_LABELS[t.source] || SOURCE_LABELS.unknown}</span>
-      ${t.format ? '<span class="identify-has-file" title="Cette piste a déjà un fichier">●</span>' : ''}
+      ${t.format ? '<span class="identify-has-file">a déjà un fichier</span>' : ''}
     </button>`).join('');
 }
 
 export async function openIdentify(track) {
   source = track;
-  candidates = [];
+  playlistTracks = [];
   sourceTitle.textContent = `${track.artist} — ${track.title} (${formatDuration(track.duration)})`;
   searchInput.value = '';
   resultsList.innerHTML = '';
+  hint.textContent = '';
   openModal(modal, () => { source = null; });
 
   const tracks = (await api.getTracks({ source: 'all' })).filter((t) => t.playlistIds);
   if (source !== track) return; // Closed or reopened meanwhile
-  candidates = tracks.map((t) => ({
-    track: t,
-    tokens: tokens(`${t.artist} ${t.title}`),
-    text: `${t.artist} ${t.title} ${t.album}`.toLowerCase(),
-  }));
+  playlistTracks = tracks.sort((a, b) => a.title.localeCompare(b.title));
   render();
 }
 

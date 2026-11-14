@@ -102,6 +102,8 @@
               <option value="soundcloud">SoundCloud</option>
               <option value="local">Local</option>
               <option value="unknown">Inconnu</option>
+              <option value="matched">Inconnu avec correspondance</option>
+              <option value="ignored">Ignorées</option>
             </select>
             <select id="filter-playlist" class="select-control">
               <option value="">Toutes les playlists</option>
@@ -122,6 +124,7 @@
             <span>Source</span>
             <span>Durée</span>
             <span>Fichier</span>
+            <span></span>
           </div>
 
           <div class="track-list" id="track-list">
@@ -317,7 +320,7 @@
           </button>
         </div>
 
-        <div class="slskd-target" id="slskd-target" hidden></div>
+        <div class="slskd-target" id="slskd-target"></div>
 
         <div class="slskd-search-bar">
           <input type="text" class="slskd-search-input" id="slskd-search-query" placeholder="Recherche..." />
@@ -341,8 +344,8 @@
           </select>
           <label class="checkbox-label"><input type="checkbox" id="result-free-slots" /> Slot libre</label>
           <select id="result-sort" class="select-control select-small">
+            <option value="duration">Tri : bonne durée, puis qualité</option>
             <option value="quality">Tri : qualité</option>
-            <option value="duration">Tri : durée la plus proche</option>
             <option value="speed">Tri : vitesse</option>
             <option value="size">Tri : taille</option>
           </select>
@@ -378,9 +381,9 @@
           <span class="identify-value" id="identify-source-title">—</span>
         </div>
         <div class="identify-search-bar">
-          <input type="text" class="identify-search-input" id="identify-search-input" placeholder="Rechercher dans les playlists..." />
+          <input type="text" class="identify-search-input" id="identify-search-input" placeholder="Chercher un titre ou un artiste dans vos playlists..." />
         </div>
-        <p class="identify-hint">Suggestions classées par ressemblance. Cliquez sur un morceau pour lier le fichier.</p>
+        <p class="identify-hint" id="identify-hint"></p>
         <div class="identify-results-list" id="identify-results-list"></div>
       </div>
     </div>

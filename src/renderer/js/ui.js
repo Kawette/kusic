@@ -42,8 +42,8 @@ export const LOSSLESS = ['FLAC', 'WAV', 'ALAC', 'APE', 'AIFF'];
 
 export const isLossless = (format) => LOSSLESS.includes((format || '').toUpperCase());
 
-/** Above this gap, a file's duration is flagged as different from the track's. */
-export const DURATION_TOLERANCE_MS = 5000;
+/** Above this gap, a file's duration is flagged as another version of the track. */
+export const DURATION_TOLERANCE_MS = 15000;
 
 /** Soulseek query for a track: "Artist Title". */
 export function trackQuery(track) {
@@ -151,6 +151,52 @@ document.addEventListener('click', (e) => {
 document.addEventListener('error', (e) => {
   if (e.target instanceof HTMLImageElement) e.target.style.visibility = 'hidden';
 }, true);
+
+// ─── Context menu ───────────────────────────────────────────
+let openMenu = null;
+
+export function closeMenu() {
+  openMenu?.remove();
+  openMenu = null;
+}
+
+/**
+ * Show a small menu at (x, y). `items`: { label, action, danger? } or
+ * 'separator'. Closes on click anywhere, Escape, scroll or resize.
+ */
+export function showMenu(x, y, items) {
+  closeMenu();
+  const menu = document.createElement('div');
+  menu.className = 'context-menu';
+  menu.setAttribute('role', 'menu');
+  const actions = [];
+  menu.innerHTML = items.map((item) => {
+    if (item === 'separator') return '<div class="context-menu-separator"></div>';
+    actions.push(item.action);
+    return `<button role="menuitem" class="${item.danger ? 'danger' : ''}" data-index="${actions.length - 1}">${escapeHtml(item.label)}</button>`;
+  }).join('');
+  menu.addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-index]');
+    if (!btn) return;
+    closeMenu();
+    actions[btn.dataset.index]();
+  });
+  document.body.appendChild(menu);
+
+  // Keep the menu inside the window
+  const { width, height } = menu.getBoundingClientRect();
+  menu.style.left = `${Math.min(x, window.innerWidth - width - 8)}px`;
+  menu.style.top = `${Math.min(y, window.innerHeight - height - 8)}px`;
+  openMenu = menu;
+  menu.querySelector('button')?.focus();
+}
+
+document.addEventListener('mousedown', (e) => {
+  if (openMenu && !openMenu.contains(e.target)) closeMenu();
+}, true);
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeMenu(); });
+window.addEventListener('resize', closeMenu);
+document.addEventListener('scroll', closeMenu, true);
 
 /** Replace a button's content with a spinner while `fn` runs. */
 export async function withBusyButton(btn, fn) {

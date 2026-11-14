@@ -24,6 +24,10 @@ export interface Track {
   linkedTrackIds?: string[];
   /** Pending file conflict for this track, resolved by the user */
   conflictId?: string;
+  /** Unknown file: playlist tracks it strictly matches (link on user click) */
+  suggestedTrackIds?: string[];
+  /** Playlist track hidden by the user */
+  ignored?: boolean;
 }
 
 export interface Playlist {
@@ -56,7 +60,7 @@ export interface AppSettings {
 
 export interface TrackFilters {
   search?: string;
-  source?: "all" | "missing" | PlaylistSource | "local" | "unknown";
+  source?: "all" | "missing" | "matched" | "ignored" | PlaylistSource | "local" | "unknown";
   playlistId?: string;
   sortBy?: "recent" | "title" | "artist" | "duration" | "playlist";
 }
@@ -111,7 +115,7 @@ export interface SlskdStatus {
 
 export interface SlskdSearchResult {
   username: string;
-  freeUploadSlots: number;
+  hasFreeUploadSlot: boolean;
   uploadSpeed: number;
   queueLength?: number;
   filename: string;

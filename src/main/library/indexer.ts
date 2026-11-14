@@ -1,6 +1,7 @@
 // ─── Unified track index (pure) ────────────────────────────
 
 import type { FileConflict, Playlist, Track } from "../../types.js";
+import { findMatches } from "./matching.js";
 import { samePath } from "./naming.js";
 
 const LOCAL_FILE_FIELDS = [
@@ -27,6 +28,8 @@ function playlistTrack(track: Track): Track {
   for (const key of LOCAL_FILE_FIELDS) delete clean[key];
   delete clean.linkedTrackIds;
   delete clean.conflictId;
+  delete clean.suggestedTrackIds;
+  delete clean.ignored;
   return clean;
 }
 
@@ -37,12 +40,15 @@ function playlistTrack(track: Track): Track {
  * - local files linked to no known track: "unknown" when untagged, "local"
  *   when their tracks left every playlist;
  * - extra files linked to an already-matched track stay visible as "local";
- * - incoming files of pending conflicts are hidden, the track is flagged.
+ * - incoming files of pending conflicts are hidden, the track is flagged;
+ * - unknown files get the playlist tracks they strictly match as suggestions;
+ * - tracks hidden by the user are flagged `ignored`.
  */
 export function buildTrackIndex(
   playlists: Playlist[],
   localFiles: Track[],
   conflicts: FileConflict[] = [],
+  ignored: string[] = [],
 ): Track[] {
   const byId = new Map<string, Track>();
   for (const pl of playlists) {
@@ -83,6 +89,19 @@ export function buildTrackIndex(
   for (const conflict of conflicts) {
     const track = byId.get(conflict.trackId);
     if (track) track.conflictId = conflict.id;
+  }
+
+  for (const id of ignored) {
+    const track = byId.get(id);
+    if (track) track.ignored = true;
+  }
+
+  // Suggest only tracks still missing a file
+  const missing = [...byId.values()].filter((t) => !t.filePath && !t.ignored);
+  for (const file of extraFiles) {
+    if (file.source !== "unknown") continue;
+    const matches = findMatches(file, missing);
+    if (matches.length) file.suggestedTrackIds = matches.map((t) => t.id);
   }
 
   return [...byId.values(), ...extraFiles];

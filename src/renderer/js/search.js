@@ -6,7 +6,7 @@
 import {
   $, api, bus, closeModal, DURATION_TOLERANCE_MS, errorMessage, escapeHtml, formatBadge,
   formatDuration, formatSize, formatTime, icon, ICONS, isLossless, normalizeQuery, openModal,
-  showToast, toastError, trackQuery,
+  showToast, SOURCE_LABELS, toastError, trackQuery,
 } from './ui.js';
 import { pendingDownloadFor } from './downloads.js';
 
@@ -148,10 +148,18 @@ export async function openSearch(track, options = {}) {
   filters.format.value = options.format || '';
   filters.bitrate.value = '0';
   filters.freeSlots.checked = false;
-  filters.sort.value = 'quality';
+  filters.sort.value = 'duration';
   queryInput.value = trackQuery(track);
-  targetEl.innerHTML = `Pour : <strong>${escapeHtml(track.artist)} — ${escapeHtml(track.title)}</strong>
-    <span class="muted">(${formatDuration(track.duration)}${track.format ? `, fichier actuel ${escapeHtml(track.format)}` : ''})</span>`;
+  // The playlist track, to compare results against
+  targetEl.innerHTML = `
+    ${track.artwork ? `<img class="slskd-target-art" src="${escapeHtml(track.artwork)}" alt="">` : '<span class="slskd-target-art"></span>'}
+    <div class="slskd-target-info">
+      <span class="slskd-target-title">${escapeHtml(track.title)}</span>
+      <span class="slskd-target-artist">${escapeHtml(track.artist)}${track.album ? ` · ${escapeHtml(track.album)}` : ''}</span>
+    </div>
+    <span class="source-badge ${escapeHtml(track.source)}">${SOURCE_LABELS[track.source] || ''}</span>
+    <span class="slskd-target-duration" title="Durée de la piste">${formatDuration(track.duration)}</span>
+    ${track.format ? `<span class="slskd-target-file">Fichier actuel : ${formatBadge(track.format)}</span>` : ''}`;
 
   openModal(modal, () => { shown = null; });
   await showQuery(queryInput.value);
@@ -205,24 +213,40 @@ function applyFilters(results) {
   const format = filters.format.value;
   const minBitrate = Number(filters.bitrate.value);
   const target = shown?.track?.duration;
-  const durationGap = (r) => (target && r.length ? Math.abs(r.length * 1000 - target) : Infinity);
+  // 0: same length, 1: close, 2: other version or unknown
+  const durationBand = (r) => {
+    if (!target || !r.length) return 2;
+    const gap = Math.abs(r.length * 1000 - target);
+    return gap <= 3000 ? 0 : gap <= DURATION_TOLERANCE_MS ? 1 : 2;
+  };
 
   const filtered = results.filter((r) => {
     const lossless = isLossless(r.extension);
     if (format === 'lossless' && !lossless) return false;
     if (format && format !== 'lossless' && r.extension !== format) return false;
     if (minBitrate && !lossless && (r.bitRate || 0) < minBitrate) return false;
-    if (filters.freeSlots.checked && !r.freeUploadSlots) return false;
+    if (filters.freeSlots.checked && !r.hasFreeUploadSlot) return false;
     return true;
   });
 
   const sorters = {
     quality: (a, b) => b.quality - a.quality,
-    duration: (a, b) => durationGap(a) - durationGap(b) || b.quality - a.quality,
+    duration: (a, b) => durationBand(a) - durationBand(b) || b.quality - a.quality,
     speed: (a, b) => b.uploadSpeed - a.uploadSpeed,
     size: (a, b) => b.size - a.size,
   };
   return filtered.sort(sorters[filters.sort.value] || sorters.quality);
+}
+
+/** Green when the length matches the track, orange when clearly another version. */
+function durationMatch(lengthSec, target) {
+  if (!lengthSec || !target) return { cls: '', title: '' };
+  const gap = Math.abs(lengthSec * 1000 - target);
+  if (gap <= 3000) return { cls: 'duration-ok', title: 'Même durée que la piste' };
+  if (gap > DURATION_TOLERANCE_MS) {
+    return { cls: 'duration-mismatch', title: `Durée très différente de la piste (${formatDuration(target)}) : probablement une autre version` };
+  }
+  return { cls: '', title: `Écart de ${Math.round(gap / 1000)} s avec la piste` };
 }
 
 const downloadKey = (r) => `${r.username}\u0000${r.filename}`;
@@ -243,16 +267,17 @@ function renderResults(searching) {
     const name = r.filename.split(/[\\/]/).pop();
     const quality = [r.bitRate && `${r.bitRate} kbps`, r.sampleRate && `${(r.sampleRate / 1000).toFixed(1)} kHz`]
       .filter(Boolean).join(' · ') || '—';
-    const mismatch = target && r.length && Math.abs(r.length * 1000 - target) > DURATION_TOLERANCE_MS;
+    const duration = durationMatch(r.length, target);
     const started = startedDownloads.has(downloadKey(r)) || pendingDownloadFor(r.username, r.filename);
-    const userInfo = `${r.freeUploadSlots ? 'Slot libre' : 'Pas de slot libre'}${r.queueLength ? ` · file d'attente : ${r.queueLength}` : ''} · ${Math.round(r.uploadSpeed / 1024)} Ko/s`;
+    const noSlot = r.hasFreeUploadSlot === false; // Unknown in older cached results
+    const userInfo = `${noSlot ? 'Pas de slot libre : le téléchargement attendra dans sa file' : 'Slot libre'}${r.queueLength ? ` · file d'attente : ${r.queueLength}` : ''} · ${Math.round(r.uploadSpeed / 1024)} Ko/s`;
 
     return `<div class="slskd-result-row">
       <span class="result-filename" title="${escapeHtml(r.filename)}">${escapeHtml(name)}</span>
-      <span class="result-user" title="${escapeHtml(userInfo)}">${r.freeUploadSlots ? '' : '<span class="no-slot">●</span> '}${escapeHtml(r.username)}</span>
+      <span class="result-user" title="${escapeHtml(userInfo)}">${noSlot ? '<span class="no-slot">●</span>' : ''}<span class="result-username">${escapeHtml(r.username)}</span></span>
       <span class="result-format">${formatBadge(r.extension)}</span>
       <span class="result-quality">${escapeHtml(quality)}</span>
-      <span class="result-duration${mismatch ? ' duration-mismatch' : ''}" ${mismatch ? `title="Durée différente de la piste (${formatDuration(target)})"` : ''}>${r.length ? formatDuration(r.length * 1000) : '—'}</span>
+      <span class="result-duration ${duration.cls}" title="${duration.title}">${r.length ? formatDuration(r.length * 1000) : '—'}${duration.cls === 'duration-ok' ? ' ✓' : ''}</span>
       <span class="result-size">${formatSize(r.size)}</span>
       <button class="result-download-btn${started ? ' done' : ''}" data-index="${i}" ${started ? 'disabled title="Téléchargement lancé"' : 'title="Télécharger"'}>
         ${icon(started ? ICONS.check : ICONS.download)}

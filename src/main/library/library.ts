@@ -103,7 +103,8 @@ export class Library {
       if (conflicts.length !== this.data.conflicts.length) this.save("conflicts", conflicts);
     }
 
-    const tracks = buildTrackIndex(this.data.playlists, localFiles, this.data.conflicts);
+    const { playlists, conflicts, ignored } = this.data;
+    const tracks = buildTrackIndex(playlists, localFiles, conflicts, ignored);
     this.save("tracks", tracks);
     this.onChange();
     return { totalTracks: tracks.length, localTracks: localFiles.length };
@@ -127,10 +128,18 @@ export class Library {
       );
     }
 
-    if (filters.source === "missing") {
-      tracks = tracks.filter((t) => t.playlistIds && !t.format);
-    } else if (filters.source && filters.source !== "all") {
-      tracks = tracks.filter((t) => t.source === filters.source);
+    // Hidden tracks only show up in their own filter
+    if (filters.source === "ignored") {
+      tracks = tracks.filter((t) => t.ignored);
+    } else {
+      tracks = tracks.filter((t) => !t.ignored);
+      if (filters.source === "missing") {
+        tracks = tracks.filter((t) => t.playlistIds && !t.format);
+      } else if (filters.source === "matched") {
+        tracks = tracks.filter((t) => t.suggestedTrackIds);
+      } else if (filters.source && filters.source !== "all") {
+        tracks = tracks.filter((t) => t.source === filters.source);
+      }
     }
 
     const playlist = filters.playlistId
@@ -149,7 +158,8 @@ export class Library {
   }
 
   getStats() {
-    const { playlists, tracks, conflicts } = this.data;
+    const { playlists, conflicts } = this.data;
+    const tracks = this.data.tracks.filter((t) => !t.ignored);
     return {
       totalPlaylists: playlists.length,
       totalTracks: tracks.length,
@@ -164,11 +174,36 @@ export class Library {
     const localIds = new Set(
       this.data.tracks.filter((t) => t.playlistIds && t.format).map((t) => t.id),
     );
-    return this.data.playlists.map(({ tracks, ...pl }) => ({
-      ...pl,
-      trackCount: tracks.length,
-      localCount: tracks.filter((t) => localIds.has(t.id)).length,
-    }));
+    const ignored = new Set(this.data.ignored);
+    return this.data.playlists.map(({ tracks, ...pl }) => {
+      const kept = tracks.filter((t) => !ignored.has(t.id));
+      return {
+        ...pl,
+        trackCount: kept.length,
+        localCount: kept.filter((t) => localIds.has(t.id)).length,
+      };
+    });
+  }
+
+  /** Hide (or show again) a playlist track; survives playlist refreshes. */
+  setIgnored(trackId: string, ignored: boolean) {
+    return this.exclusive(async () => {
+      const others = this.data.ignored.filter((id) => id !== trackId);
+      this.save("ignored", ignored ? [...others, trackId] : others);
+      await this.rebuildNow({ rescan: false });
+    });
+  }
+
+  /** Send a track's local file to the Windows trash (user-confirmed). */
+  deleteLocalFile(trackId: string) {
+    return this.exclusive(async () => {
+      const track = this.data.tracks.find((t) => t.id === trackId);
+      if (!track?.filePath) throw new Error("Aucun fichier local pour cette piste");
+      await shell.trashItem(track.filePath);
+      const root = this.root;
+      if (root) cleanEmptyDirs(path.dirname(track.filePath), root);
+      await this.rebuildNow({ rescan: true });
+    });
   }
 
   async addPlaylist(url: string): Promise<Playlist> {
