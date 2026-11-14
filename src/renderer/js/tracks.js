@@ -140,9 +140,8 @@ function statusHtml(track) {
   const title = !stats ? 'Rechercher sur Soulseek'
     : count === 0 ? 'Aucun résultat pertinent en cache : relancer la recherche'
       : `${count} résultat${count > 1 ? 's' : ''} pertinent${count > 1 ? 's' : ''}, meilleur format : ${stats.best}`;
-  const countCls = count === 0 ? '' : isLossless(stats?.best) ? ' lossless' : '';
   return `<button class="track-download-btn${count ? ' cached' : ''}${count === 0 ? ' empty' : ''}" data-action="download" title="${escapeHtml(title)}">
-    ${icon(ICONS.download, 16)}${stats ? `<span class="result-count${countCls}">${count}</span>` : ''}
+    ${icon(ICONS.download, 16)}${stats ? `<span class="result-count">${count}</span>` : ''}
   </button>`;
 }
 

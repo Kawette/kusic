@@ -1110,6 +1110,7 @@ a:hover {
 }
 
 .result-user {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 5px;
@@ -1641,20 +1642,11 @@ a:hover {
   min-width: 16px;
   padding: 0 4px;
   border-radius: 8px;
-  background: var(--accent);
-  color: white;
+  background: var(--bg-active);
+  color: var(--text-primary);
   font-size: 9px;
   line-height: 16px;
   text-align: center;
-}
-
-.track-download-btn .result-count.lossless {
-  background: var(--success);
-}
-
-.track-download-btn.empty .result-count {
-  background: var(--bg-active);
-  color: var(--text-secondary);
 }
 
 .track-download-btn.searching {
@@ -1696,7 +1688,8 @@ a:hover {
   cursor: default;
 }
 
-.quality-badge:hover::after {
+.quality-badge:hover::after,
+.result-user:hover::after {
   content: attr(data-tooltip);
   position: absolute;
   right: calc(100% + 8px);
@@ -1799,9 +1792,20 @@ button.identify-icon {
   color: var(--warning) !important;
 }
 
-.no-slot {
-  color: var(--warning);
-  font-size: 9px;
+/* Upload slot of the user: free (starts now) or busy (waits in their queue) */
+.slot-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.slot-dot.free {
+  background: var(--success);
+}
+
+.slot-dot.busy {
+  background: var(--warning);
 }
 
 .result-download-btn.done {

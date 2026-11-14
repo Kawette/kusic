@@ -293,13 +293,17 @@ function renderResults(searching) {
       .filter(Boolean).join(' · ') || '—';
     const duration = durationMatch(r.length && r.length * 1000, target);
     const started = startedDownloads.has(downloadKey(r)) || pendingDownloadFor(r.username, r.filename);
-    const noSlot = r.hasFreeUploadSlot === false; // Unknown in older cached results
-    const userInfo = `${noSlot ? 'Pas de slot libre : le téléchargement attendra dans sa file' : 'Slot libre'}${r.queueLength ? ` · file d'attente : ${r.queueLength}` : ''} · ${Math.round(r.uploadSpeed / 1024)} Ko/s`;
+    // Unknown (no dot) in older cached results
+    const slot = r.hasFreeUploadSlot == null ? '' : r.hasFreeUploadSlot ? 'free' : 'busy';
+    const userInfo = [
+      r.queueLength && `File d'attente : ${r.queueLength}`,
+      `Vitesse d'envoi : ${Math.round(r.uploadSpeed / 1024)} Ko/s`,
+    ].filter(Boolean).join('\n');
 
     const off = offTopicSet.has(r);
     return `<div class="slskd-result-row${off ? ' off-topic' : ''}" ${off ? 'title="Le nom du fichier ne contient pas le titre"' : ''}>
       <span class="result-filename" title="${escapeHtml(r.filename)}">${escapeHtml(name)}</span>
-      <span class="result-user" title="${escapeHtml(userInfo)}">${noSlot ? '<span class="no-slot">●</span>' : ''}<span class="result-username">${escapeHtml(r.username)}</span></span>
+      <span class="result-user" data-tooltip="${escapeHtml(userInfo)}">${slot ? `<span class="slot-dot ${slot}"></span>` : ''}<span class="result-username">${escapeHtml(r.username)}</span></span>
       <span class="result-format">${formatBadge(r.extension)}</span>
       <span class="result-quality">${escapeHtml(quality)}</span>
       <span class="result-duration ${duration.cls}" title="${duration.title}">${r.length ? formatDuration(r.length * 1000) : '—'}</span>
