@@ -8,6 +8,9 @@ import {
 
 const list = $('#download-view-list');
 const emptyState = $('#downloads-empty');
+// Kept as references: the empty state is out of the document while rows are shown
+const emptyTitle = $('#downloads-empty-title');
+const emptyText = $('#downloads-empty-text');
 const summary = $('#downloads-summary');
 const navBadge = $('#nav-download-badge');
 
@@ -100,7 +103,7 @@ export function render() {
   $('#dl-clear-failed').hidden = !isDownloads || failed.length === 0;
 
   if (items.length === 0) {
-    [$('#downloads-empty-title').textContent, $('#downloads-empty-text').textContent] = EMPTY_TEXTS[mode];
+    [emptyTitle.textContent, emptyText.textContent] = EMPTY_TEXTS[mode];
     list.replaceChildren(emptyState);
     return;
   }
