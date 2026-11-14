@@ -136,5 +136,7 @@ export interface Transfer {
   bytesTransferred: number;
   percentComplete: number;
   averageSpeed: number;
+  /** Failed attempts so far; slskd retries automatically (state "Queued, Locally") */
+  attempts?: number;
   trackId?: string;
 }

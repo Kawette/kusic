@@ -51,6 +51,7 @@ function flattenTransfers(users: RawDownloads[]): TrackedTransfer[] {
         bytesTransferred: file.bytesTransferred || 0,
         percentComplete: file.percentComplete || 0,
         averageSpeed: file.averageSpeed || 0,
+        attempts: file.attempts || 0,
         endedAt: file.endedAt,
       })),
     ),

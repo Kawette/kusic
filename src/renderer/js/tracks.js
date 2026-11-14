@@ -102,7 +102,8 @@ function statusHtml(track) {
   const transfer = transferForTrack(track.id);
   if (transfer && !isFinished(transfer.state)) {
     const pct = Math.round(transfer.percentComplete);
-    return `<span class="track-progress" title="${escapeHtml(transfer.state)}">${/inprogress/i.test(transfer.state) ? `↓ ${pct}%` : 'En file'}</span>`;
+    const label = /inprogress/i.test(transfer.state) ? `↓ ${pct}%` : transfer.attempts ? 'Relance' : 'En file';
+    return `<span class="track-progress" title="${escapeHtml(transfer.state)}">${label}</span>`;
   }
   if (transfer) {
     return `<button class="track-status-btn failed" data-action="download" title="Le téléchargement a échoué : choisir une autre source">Échec</button>`;
@@ -124,7 +125,7 @@ function rowHtml(track, i) {
   statusCache.set(track.id, status);
   const canIdentify = !track.playlistIds && track.filePath;
   const badge = track.suggestedTrackIds
-    ? `<span class="source-badge unknown matched" title="Un morceau de vos playlists correspond à ce fichier : cliquez sur la loupe pour vérifier et lier">${SOURCE_LABELS.unknown}</span>`
+    ? `<span class="source-badge unknown matched" title="Un morceau de vos playlists correspond à ce fichier : cliquez sur la loupe pour vérifier et lier">Identifiable</span>`
     : `<span class="source-badge ${escapeHtml(track.source)}">${SOURCE_LABELS[track.source] || SOURCE_LABELS.unknown}</span>`;
   return `
     <div class="track-row" data-track-id="${escapeHtml(track.id)}">

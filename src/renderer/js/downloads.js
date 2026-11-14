@@ -23,8 +23,12 @@ export const isFinished = (state) => /completed/i.test(state || '');
 const isSucceeded = (state) => /succeeded/i.test(state || '');
 const isFailed = (state) => isFinished(state) && !isSucceeded(state);
 
-function stateDisplay(state) {
+function stateDisplay({ state, attempts }) {
   const s = (state || '').toLowerCase();
+  // slskd waits before retrying a failed attempt; the transfer is queued again
+  if (attempts > 0 && !s.includes('completed') && !s.includes('inprogress')) {
+    return { label: `Nouvelle tentative (n°${attempts + 1})`, cls: 'state-queued' };
+  }
   if (s.includes('succeeded')) return { label: 'Terminé', cls: 'state-done' };
   if (s.includes('cancelled')) return { label: 'Annulé', cls: 'state-error' };
   if (s.includes('timedout')) return { label: 'Expiré', cls: 'state-error' };
@@ -88,7 +92,7 @@ export function render() {
   rendered = [...active, ...failed.reverse(), ...done.reverse()];
   list.innerHTML = rendered.map((t, i) => {
     const name = t.filename.split(/[\\/]/).pop() || t.filename;
-    const { label, cls } = stateDisplay(t.state);
+    const { label, cls } = stateDisplay(t);
     const pct = Math.round(t.percentComplete);
     const running = !isFinished(t.state);
     const failedRow = isFailed(t.state);
