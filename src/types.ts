@@ -74,7 +74,8 @@ export interface FileConflict {
   newPath: string;
   /** File currently holding the slot */
   existingPath: string;
-  reason: "already-linked" | "same-name";
+  /** already-linked / same-name: when placing a file; duplicate: found by a scan */
+  reason: "already-linked" | "same-name" | "duplicate";
   createdAt: number;
 }
 

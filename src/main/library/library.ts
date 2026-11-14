@@ -20,7 +20,7 @@ import type {
   Track,
   TrackFilters,
 } from "../../types.js";
-import { buildTrackIndex } from "./indexer.js";
+import { buildTrackIndex, findDuplicates } from "./indexer.js";
 import {
   cachedLocalFiles,
   cleanEmptyDirs,
@@ -98,9 +98,17 @@ export class Library {
     const localFiles = rescan && reachable ? await scanLibrary(root) : cachedLocalFiles();
 
     if (reachable) {
-      // Drop conflicts whose incoming file was deleted outside Kusic
-      const conflicts = this.data.conflicts.filter((c) => fs.existsSync(c.newPath));
-      if (conflicts.length !== this.data.conflicts.length) this.save("conflicts", conflicts);
+      // Drop conflicts whose incoming file was deleted outside Kusic, and
+      // duplicates that are no longer duplicates (one of the files is gone)
+      const kept = this.data.conflicts.filter(
+        (c) => fs.existsSync(c.newPath) && (c.reason !== "duplicate" || fs.existsSync(c.existingPath)),
+      );
+      const duplicates = findDuplicates(this.data.playlists, localFiles, kept, (track, file) =>
+        samePath(file.filePath!, path.join(root, libraryFilename(track, path.extname(file.filePath!)))),
+      ).map((d): FileConflict => ({ ...d, id: crypto.randomUUID(), reason: "duplicate", createdAt: Date.now() }));
+      if (duplicates.length || kept.length !== this.data.conflicts.length) {
+        this.save("conflicts", [...kept, ...duplicates]);
+      }
     }
 
     const tracks = buildTrackIndex(this.data.playlists, localFiles, this.data.conflicts);
@@ -393,7 +401,9 @@ export class Library {
       const existingIds = fs.existsSync(conflict.existingPath)
         ? readLinkedIds(conflict.existingPath)
         : [];
-      const ids = [...new Set([...existingIds, conflict.trackId])];
+      // The kept file inherits every link of the discarded one (a duplicate
+      // may also serve another playlist track)
+      const ids = [...new Set([...existingIds, ...readLinkedIds(conflict.newPath), conflict.trackId])];
 
       if (choice === "keep-existing") {
         // Never trash the incoming file when there is nothing left to keep

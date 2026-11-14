@@ -32,13 +32,62 @@ function playlistTrack(track: Track): Track {
   return clean;
 }
 
+export type Duplicate = Pick<FileConflict, "trackId" | "newPath" | "existingPath">;
+
+/**
+ * Library files linked to a playlist track that already has another file.
+ * Per track, the file kept as "existing" is the one with the library name
+ * ("Artist - Title.ext"), else the one linked to the most tracks, else the
+ * first by path; each other file is a duplicate (unless it is the kept file
+ * of another track). Files already in a conflict are ignored.
+ */
+export function findDuplicates(
+  playlists: Playlist[],
+  localFiles: Track[],
+  conflicts: FileConflict[],
+  hasLibraryName: (track: Track, file: Track) => boolean,
+): Duplicate[] {
+  const tracks = new Map(playlists.flatMap((p) => p.tracks).map((t) => [t.id, t]));
+  const pending = conflicts.map((c) => c.newPath);
+  const filesByTrack = new Map<string, Track[]>();
+  for (const file of localFiles) {
+    if (pending.some((p) => samePath(p, file.filePath!))) continue;
+    for (const id of file.linkedTrackIds || []) {
+      if (tracks.has(id)) filesByTrack.set(id, [...(filesByTrack.get(id) || []), file]);
+    }
+  }
+
+  const groups = [...filesByTrack].filter(([, files]) => files.length > 1).map(([trackId, files]) => {
+    const track = tracks.get(trackId)!;
+    const named = (f: Track) => (hasLibraryName(track, f) ? 0 : 1);
+    const links = (f: Track) => f.linkedTrackIds?.length ?? 0;
+    const sorted = [...files].sort(
+      (a, b) => named(a) - named(b) || links(b) - links(a) || a.filePath!.localeCompare(b.filePath!),
+    );
+    return { trackId, kept: sorted[0], extras: sorted.slice(1) };
+  });
+
+  const keptPaths = groups.map((g) => g.kept.filePath!);
+  const duplicates: Duplicate[] = [];
+  for (const { trackId, kept, extras } of groups) {
+    for (const extra of extras) {
+      const path = extra.filePath!;
+      if (keptPaths.some((p) => samePath(p, path))) continue;
+      if (duplicates.some((d) => samePath(d.newPath, path))) continue;
+      duplicates.push({ trackId, newPath: path, existingPath: kept.filePath! });
+    }
+  }
+  return duplicates;
+}
+
 /**
  * Build the unified track list:
  * - each playlist track once (even if it is in several playlists), with the
  *   quality info of the first local file linked to it;
  * - local files linked to no known track: "unknown" when untagged, "local"
  *   when their tracks left every playlist;
- * - extra files linked to an already-matched track stay visible as "local";
+ * - extra files linked to an already-matched track (duplicates, normally
+ *   turned into conflicts by findDuplicates) stay visible as "local";
  * - incoming files of pending conflicts are hidden, the track is flagged;
  * - unknown files get the playlist tracks they strictly match as suggestions.
  */

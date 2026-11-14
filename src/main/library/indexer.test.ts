@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { FileConflict, Playlist, Track } from "../../types.js";
-import { buildTrackIndex } from "./indexer.js";
+import { buildTrackIndex, findDuplicates } from "./indexer.js";
 
 const track = (id: string, extra: Partial<Track> = {}): Track => ({
   id,
@@ -103,5 +103,48 @@ describe("buildTrackIndex", () => {
     );
     expect(tracks).toHaveLength(1);
     expect(tracks[0]).toMatchObject({ conflictId: "c1", filePath: "C:\\Lib\\a.flac" });
+  });
+});
+
+describe("findDuplicates", () => {
+  const lib = (name: string) => `C:\\Lib\\${name}`;
+  const named = (name: string) => (_track: Track, f: Track) => f.filePath === lib(name);
+
+  it("keeps the file with the library name and flags the other one", () => {
+    const duplicates = findDuplicates(
+      [playlist("p1", [track("a")])],
+      [file("a - copie.flac", ["a"]), file("a.flac", ["a"])],
+      [],
+      named("a.flac"),
+    );
+    expect(duplicates).toEqual([
+      { trackId: "a", newPath: lib("a - copie.flac"), existingPath: lib("a.flac") },
+    ]);
+  });
+
+  it("ignores single files, files already in a conflict and unknown tracks", () => {
+    const conflict: FileConflict = {
+      id: "c", trackId: "a", newPath: lib("a2.flac"), existingPath: lib("a.flac"),
+      reason: "already-linked", createdAt: 1,
+    };
+    expect(findDuplicates(
+      [playlist("p1", [track("a"), track("b")])],
+      [file("a.flac", ["a"]), file("a2.flac", ["a"]), file("b.flac", ["b"]), file("x.flac", ["gone"]), file("y.flac", ["gone"])],
+      [conflict],
+      () => false,
+    )).toEqual([]);
+  });
+
+  it("never flags a file that is the kept file of another track", () => {
+    // ab.flac serves both a and b: it must stay, the single-track copy is the duplicate
+    const duplicates = findDuplicates(
+      [playlist("p1", [track("a"), track("b")])],
+      [file("a.flac", ["a"]), file("ab.flac", ["a", "b"])],
+      [],
+      () => false,
+    );
+    expect(duplicates).toEqual([
+      { trackId: "a", newPath: lib("a.flac"), existingPath: lib("ab.flac") },
+    ]);
   });
 });

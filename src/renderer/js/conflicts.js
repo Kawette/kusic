@@ -1,6 +1,7 @@
 // ─── Conflict resolution modal ──────────────────────────────
-// Shows the incoming and the existing file side by side; the user picks
-// which one to keep. The other one goes to the Windows trash.
+// Shows the existing and the incoming file (or duplicate) side by side, each
+// above its button; the user picks which one to keep. The other one goes to
+// the Windows trash.
 
 import {
   $, api, bus, closeModal, durationBand, escapeHtml, formatBadge, formatDuration, formatSize,
@@ -43,22 +44,27 @@ async function openConflict(id) {
   if (!current) return;
   const { track } = current;
   const existingGone = !current.existingFile.exists;
+  // Duplicates are two files already in the library, found by a scan
+  const duplicate = current.reason === 'duplicate';
+  const explanation = {
+    'already-linked': 'Cette piste a déjà un fichier dans la bibliothèque.',
+    'same-name': 'Un fichier porte déjà ce nom dans la bibliothèque.',
+    duplicate: 'Deux fichiers de la bibliothèque sont liés à cette piste.',
+  }[current.reason];
 
   body.innerHTML = `
     <p class="modal-desc">
       <strong>${escapeHtml(track.artist)} — ${escapeHtml(track.title)}</strong> (${formatDuration(track.duration)})<br>
-      ${current.reason === 'already-linked'
-        ? 'Cette piste a déjà un fichier dans la bibliothèque.'
-        : 'Un fichier porte déjà ce nom dans la bibliothèque.'}
-      Téléchargé le ${formatTime(current.createdAt)}.
+      ${explanation}
+      ${duplicate ? 'Détecté' : 'Téléchargé'} le ${formatTime(current.createdAt)}.
     </p>
     <div class="conflict-compare">
-      ${fileCard('Nouveau fichier', current.newFile, track)}
-      ${fileCard('Fichier existant', current.existingFile, track)}
+      ${fileCard(duplicate ? 'Fichier de la piste' : 'Fichier existant', current.existingFile, track)}
+      ${fileCard(duplicate ? 'Doublon' : 'Nouveau fichier', current.newFile, track)}
     </div>
     <div class="modal-actions">
-      <button class="btn-secondary" data-choice="keep-existing" ${existingGone ? 'disabled title="Le fichier existant a disparu"' : ''}>Garder l'existant</button>
-      <button class="btn-primary" data-choice="replace">Remplacer par le nouveau</button>
+      <button class="btn-secondary" data-choice="keep-existing" ${existingGone ? 'disabled title="Le fichier existant a disparu"' : ''}>${duplicate ? 'Garder le fichier de la piste' : "Garder l'existant"}</button>
+      <button class="btn-primary" data-choice="replace">${duplicate ? 'Garder le doublon' : 'Remplacer par le nouveau'}</button>
     </div>
     <p class="setting-help">Le fichier écarté est envoyé à la corbeille Windows.</p>`;
   openModal(modal, () => { current = null; });

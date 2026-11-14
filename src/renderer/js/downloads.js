@@ -168,6 +168,12 @@ $('#btn-open-library').addEventListener('click', () => api.openLibraryFolder().c
 // ─── Conflicts ──────────────────────────────────────────────
 let conflictsToken = 0;
 
+const CONFLICT_REASONS = {
+  'already-linked': 'La piste a déjà un fichier',
+  'same-name': 'Nom de fichier déjà pris',
+  duplicate: 'Doublon dans la bibliothèque',
+};
+
 export async function loadConflicts() {
   const token = ++conflictsToken;
   let conflicts;
@@ -185,7 +191,7 @@ export async function loadConflicts() {
     <div class="conflict-row">
       <span class="conflict-icon">${icon(ICONS.warning, 16)}</span>
       <span class="conflict-title">${escapeHtml(c.track.artist)} — ${escapeHtml(c.track.title)}</span>
-      <span class="conflict-reason">${c.reason === 'already-linked' ? 'La piste a déjà un fichier' : 'Nom de fichier déjà pris'}</span>
+      <span class="conflict-reason">${CONFLICT_REASONS[c.reason] || ''}</span>
       <button class="btn-small btn-accent" data-conflict-id="${escapeHtml(c.id)}">Comparer et choisir</button>
     </div>`).join('');
   return conflicts;
