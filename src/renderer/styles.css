@@ -1627,11 +1627,10 @@ a:hover {
   font-variant-numeric: tabular-nums;
 }
 
-/* Same orange as the conflict tag and banner text, on an opaque dark tint
-   that also reads well on the active (violet) menu entry */
+/* Filled with the banner text's orange, number in the banner's dark brown */
 .nav-badge-warning {
-  background: #3d2c0c;
-  color: var(--warning);
+  background: var(--warning);
+  color: #271c0f;
   margin-left: 4px;
 }
 
