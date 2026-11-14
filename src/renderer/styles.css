@@ -1870,6 +1870,19 @@ button.identify-result-row {
   gap: 12px;
 }
 
+/* Each choice right under its file card, both alike so neither is suggested */
+.conflict-choices {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.conflict-choices button {
+  justify-content: center;
+  text-align: center;
+}
+
 .conflict-card {
   padding: 14px;
   border: 1px solid var(--border);

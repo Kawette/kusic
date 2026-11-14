@@ -66,11 +66,10 @@ async function openConflict(id) {
       ${fileCard(duplicate ? 'Fichier de la piste' : 'Fichier existant', current.existingFile, track)}
       ${fileCard(duplicate ? 'Doublon' : 'Nouveau fichier', current.newFile, track)}
     </div>
-    <div class="modal-actions">
+    <div class="conflict-choices">
       <button class="btn-secondary" data-choice="keep-existing" ${existingGone ? 'disabled title="Le fichier existant a disparu"' : ''}>${duplicate ? 'Garder le fichier de la piste' : "Garder l'existant"}</button>
-      <button class="btn-primary" data-choice="replace">${duplicate ? 'Garder le doublon' : 'Remplacer par le nouveau'}</button>
-    </div>
-    <p class="setting-help">Le fichier écarté est envoyé à la corbeille Windows.</p>`;
+      <button class="btn-secondary" data-choice="replace">${duplicate ? 'Garder le doublon' : 'Remplacer par le nouveau'}</button>
+    </div>`;
   renderPlayButtons();
   openModal(modal, () => { current = null; });
 }
