@@ -580,11 +580,9 @@ const AUTO_KINDS = {
     label: 'Amélioration auto', name: 'Amélioration',
   },
 };
-/** The run of each kind: { kind, total, done, autoDownload, downloaded } */
+/** The run of each kind: { kind, queue (tracks waiting for a worker), total, done, autoDownload, downloaded } */
 const runs = { search: null, upgrade: null };
 const starting = { search: false, upgrade: false };
-/** Tracks waiting for a worker, per kind ({ run, track }): "search" ones go first */
-const waiting = { search: [], upgrade: [] };
 /** Searches running for the workers (kept when the validation drops its prefetch) */
 const autoSessions = new Set();
 let workerCount = 0;
@@ -600,11 +598,10 @@ function renderAutoState() {
 
 /** Queue the tracks of a new run, and start the workers still missing. */
 function startRun(kind, tracks, autoDownload) {
-  const run = { kind, total: tracks.length, done: 0, autoDownload, downloaded: 0 };
-  runs[kind] = run;
-  waiting[kind] = tracks.map((track) => ({ run, track }));
+  runs[kind] = { kind, queue: [...tracks], total: tracks.length, done: 0, autoDownload, downloaded: 0 };
   renderAutoState();
-  const missing = Math.min(AUTO_SEARCH_CONCURRENCY - workerCount, waiting.search.length + waiting.upgrade.length);
+  const waitingCount = (runs.search?.queue.length || 0) + (runs.upgrade?.queue.length || 0);
+  const missing = Math.min(AUTO_SEARCH_CONCURRENCY - workerCount, waitingCount);
   for (let i = 0; i < missing; i++) {
     // Spaced after the busy workers too: searches never start together
     autoWorker((workerCount + i) * AUTO_SEARCH_DELAY).catch(toastError);
@@ -615,7 +612,6 @@ function startRun(kind, tracks, autoDownload) {
 /** Stop a run: its waiting tracks are dropped, its running searches end in the cache. */
 function stopRun(kind, message, type = 'info') {
   runs[kind] = null;
-  waiting[kind] = [];
   renderAutoState();
   if (message) showToast(message, type);
 }
@@ -637,10 +633,13 @@ function stopIfRunning(kind) {
   return !!run || starting[kind];
 }
 
-/** `tracks`: the tracks currently displayed. */
-export async function toggleAutoSearch(tracks) {
-  if (stopIfRunning('search')) return;
-  starting.search = true;
+/**
+ * Start or stop the run of a kind. `plan(autoDownload)` gives the tracks to
+ * queue, and the message to show when there are none.
+ */
+async function toggleAuto(kind, plan) {
+  if (stopIfRunning(kind)) return;
+  starting[kind] = true;
   try {
     if (!(await ensureConnected())) return;
     const [{ autoDownload }] = await Promise.all([
@@ -648,6 +647,19 @@ export async function toggleAutoSearch(tracks) {
       loadCacheSummary(), // Drop entries that expired during a long session
       refreshDownloads(), // The pushed list may be empty right after slskd starts
     ]);
+    const { queue, empty } = plan(autoDownload);
+    if (queue.length) startRun(kind, queue, autoDownload);
+    else showToast(empty, 'success');
+  } catch (err) {
+    toastError(err);
+  } finally {
+    starting[kind] = false;
+  }
+}
+
+/** `tracks`: the tracks currently displayed. */
+export function toggleAutoSearch(tracks) {
+  return toggleAuto('search', (autoDownload) => {
     const queue = [];
     for (const { track, key } of missingTracks(tracks)) {
       if (sessions.has(key)) continue;
@@ -661,17 +673,8 @@ export async function toggleAutoSearch(tracks) {
         queue.push(track);
       }
     }
-    if (queue.length === 0) {
-      showToast('Toutes les pistes affichées ont déjà des résultats en cache', 'success');
-      return;
-    }
-
-    startRun('search', queue, autoDownload);
-  } catch (err) {
-    toastError(err);
-  } finally {
-    starting.search = false;
-  }
+    return { queue, empty: 'Toutes les pistes affichées ont déjà des résultats en cache' };
+  });
 }
 
 /** A playlist track whose file is lossy (MP3…): a lossless version may replace it. */
@@ -691,30 +694,22 @@ function upgradableTracks(tracks) {
 }
 
 /** `tracks`: the tracks currently displayed. */
-export async function toggleAutoUpgrade(tracks) {
-  if (stopIfRunning('upgrade')) return;
-  starting.upgrade = true;
-  try {
-    if (!(await ensureConnected())) return;
-    const [{ autoDownload }] = await Promise.all([api.getSettings(), loadCacheSummary(), refreshDownloads()]);
+export function toggleAutoUpgrade(tracks) {
+  return toggleAuto('upgrade', (autoDownload) => {
     const candidates = upgradableTracks(tracks);
     // Without auto-download, fresh results are already there to validate
     const queue = autoDownload ? candidates : candidates.filter((track) => !isFresh(cachedStats(track)));
-    if (queue.length === 0) {
-      const found = candidates.filter(hasLosslessResults).length;
-      showToast(!candidates.length
-        ? 'Aucune piste affichée à améliorer (toutes en FLAC/WAV, ou déjà en téléchargement)'
-        : found
-          ? `Pistes déjà cherchées récemment : ${found} à valider dans « À valider »`
-          : 'Pistes déjà cherchées récemment : aucune version sans perte trouvée', 'success');
-      return;
-    }
-    startRun('upgrade', queue, autoDownload);
-  } catch (err) {
-    toastError(err);
-  } finally {
-    starting.upgrade = false;
-  }
+    return { queue, empty: nothingToUpgrade(candidates) };
+  });
+}
+
+/** Why an auto-upgrade has no track to search. */
+function nothingToUpgrade(candidates) {
+  if (!candidates.length) return 'Aucune piste affichée à améliorer (toutes en FLAC/WAV, ou déjà en téléchargement)';
+  const found = candidates.filter(hasLosslessResults).length;
+  return found
+    ? `Pistes déjà cherchées récemment : ${found} à valider dans « À valider »`
+    : 'Pistes déjà cherchées récemment : aucune version sans perte trouvée';
 }
 
 /** Take the waiting tracks one by one (missing ones first), pausing after each search. */
@@ -723,7 +718,7 @@ async function autoWorker(initialDelay) {
     await sleep(initialDelay);
     for (let item = nextWaiting(); item; item = nextWaiting()) {
       const searched = await processWaiting(item);
-      if (searched && (waiting.search.length || waiting.upgrade.length)) await sleep(AUTO_SEARCH_DELAY);
+      if (searched && (runs.search?.queue.length || runs.upgrade?.queue.length)) await sleep(AUTO_SEARCH_DELAY);
     }
   } finally {
     // At once, not a microtask later: a run starting meanwhile sees the free slot
@@ -731,7 +726,14 @@ async function autoWorker(initialDelay) {
   }
 }
 
-const nextWaiting = () => waiting.search.shift() || waiting.upgrade.shift();
+/** The next waiting track, with its run: tracks without a file first. */
+function nextWaiting() {
+  for (const run of [runs.search, runs.upgrade]) {
+    const track = run?.queue.shift();
+    if (track) return { run, track };
+  }
+  return null;
+}
 
 /** Search a track (or read its fresh results), then maybe download it. True if searched. */
 async function processWaiting({ run, track }) {
