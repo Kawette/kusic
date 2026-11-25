@@ -444,6 +444,7 @@ resultsList.addEventListener('click', async (e) => {
 // ─── Validation ─────────────────────────────────────────────
 // The tracks with relevant cached results, shown one after the other in the
 // modal: download one of the results (certain or not) or skip the track.
+// Tracks with a lossy file come after, when lossless results were found.
 
 /** Playlist tracks without a file, one per query: [{ track, key }]. */
 function missingTracks(tracks) {
@@ -462,11 +463,19 @@ function missingTracks(tracks) {
 /** Relevant results recent enough to choose from without searching again. */
 const isValidatable = (entry) => isFresh(entry) && entry.relevant > 0;
 
-/** Displayed tracks waiting for a choice: no file, no download, fresh relevant cached results. */
+/**
+ * Displayed tracks waiting for a choice: without a file, no download and
+ * fresh relevant cached results; then lossy files with fresh lossless results.
+ */
 export function validationQueue(tracks) {
-  return missingTracks(tracks)
+  const missing = missingTracks(tracks)
     .filter(({ track, key }) => !hasTransferForTrack(track.id) && isValidatable(cacheSummary.get(key)))
     .map(({ track }) => track);
+  const upgrades = upgradableTracks(tracks).filter((track) => {
+    const cached = cachedStats(track);
+    return isValidatable(cached) && isLossless(cached.best);
+  });
+  return [...missing, ...upgrades];
 }
 
 /** `tracks`: the tracks currently displayed. */
@@ -503,7 +512,8 @@ async function showQueueTrack() {
   const track = queue.tracks[queue.index];
   queuePosition.textContent = `Piste ${queue.index + 1} / ${queue.tracks.length}`;
   queueHint.textContent = '';
-  await showTrack(track);
+  // An upgrade: only the lossless results matter
+  await showTrack(track, track.format ? { format: 'lossless' } : {});
   cancelPrefetch();
   // Searched while this one is checked, so that it shows up-to-date results at once
   const next = queue?.tracks[queue.index + 1];
@@ -545,8 +555,9 @@ queryInput.addEventListener('keydown', (e) => {
 // Auto-search: results are cached for the user to choose from. Only with the
 // opt-in "autoDownload" setting, a track whose results hold a certain match
 // (see certainMatches) is downloaded without a click.
-// Auto-upgrade (asked with its own button): tracks whose file is lossy get
-// their certain FLAC/WAV match downloaded; the two files then meet as a
+// Auto-upgrade (its own button): tracks whose file is lossy are searched;
+// those with lossless results join the validation, and with "autoDownload"
+// their certain FLAC/WAV match is downloaded. The two files then meet as a
 // conflict, where the user picks the one to keep.
 const AUTO_KINDS = {
   search: {
@@ -656,14 +667,17 @@ export async function toggleAutoUpgrade(tracks) {
   autoStarting = true;
   try {
     if (!(await ensureConnected())) return;
-    await Promise.all([loadCacheSummary(), refreshDownloads()]);
-    const queue = upgradableTracks(tracks);
+    const [{ autoDownload }] = await Promise.all([api.getSettings(), loadCacheSummary(), refreshDownloads()]);
+    const candidates = upgradableTracks(tracks);
+    // Without auto-download, fresh results are already there to validate
+    const queue = autoDownload ? candidates : candidates.filter((track) => !isFresh(cachedStats(track)));
     if (queue.length === 0) {
-      showToast('Aucune piste affichée à améliorer (toutes en FLAC/WAV, ou déjà en téléchargement)', 'success');
+      showToast(candidates.length
+        ? 'Les pistes à améliorer ont déjà des résultats récents : voir « À valider »'
+        : 'Aucune piste affichée à améliorer (toutes en FLAC/WAV, ou déjà en téléchargement)', 'success');
       return;
     }
-    // Asked with this button: downloads whatever the autoDownload setting
-    startRun({ kind: 'upgrade', queue, total: queue.length, done: 0, sessions: new Set(), autoDownload: true, downloaded: 0 });
+    startRun({ kind: 'upgrade', queue, total: queue.length, done: 0, sessions: new Set(), autoDownload, downloaded: 0 });
   } catch (err) {
     toastError(err);
   } finally {
@@ -717,9 +731,8 @@ async function downloadCertainMatch(run, track, results) {
     if (run.kind === 'upgrade' && !isLossless(match.extension)) continue;
     if (!matches.some((m) => m.username === match.username)) matches.push(match);
   }
-  if (!matches.length) return;
-  // Unticked during an auto-search: no more automatic downloads
-  if (run.kind === 'search' && !(await api.getSettings()).autoDownload) return;
+  // Unticked during the run: no more automatic downloads
+  if (!matches.length || !(await api.getSettings()).autoDownload) return;
   for (const match of matches) {
     // Stopped, or downloaded by hand while the settings were read
     if (auto !== run || hasTransferForTrack(track.id)) return;

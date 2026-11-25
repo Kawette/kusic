@@ -83,7 +83,7 @@
                 <span id="auto-search-text">Recherche auto</span>
                 <span id="auto-search-status"></span>
               </button>
-              <button class="btn-secondary" id="btn-auto-upgrade" title="Pour les pistes affichées en MP3 (ou autre format avec perte) : chercher sur Soulseek et télécharger une version FLAC/WAV certaine. Les deux fichiers arrivent en conflit, vous choisissez lequel garder">
+              <button class="btn-secondary" id="btn-auto-upgrade" title="Pour les pistes affichées en MP3 (ou autre format avec perte) : chercher une version FLAC/WAV sur Soulseek, à choisir dans « À valider ». Avec le téléchargement automatique, une version certaine est téléchargée sans clic. Les deux fichiers arrivent en conflit, vous choisissez lequel garder">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="19" x2="12" y2="5" /><polyline points="5 12 12 5 19 12" /></svg>
                 <span id="auto-upgrade-text">Amélioration auto</span>
                 <span id="auto-upgrade-status"></span>
@@ -268,7 +268,7 @@
                   <input type="checkbox" id="auto-download" />
                   Téléchargement automatique des correspondances certaines
                 </label>
-                <p class="setting-help">Pendant la recherche auto, une piste est téléchargée sans clic seulement si un fichier a tous ses artistes, son titre et exactement sa version (même remixeur, aucun remix, edit, extended, live… en plus ou en moins), la même durée à 2 s près, et est en FLAC/WAV ou MP3 320. Le FLAC est toujours choisi en premier, puis l'utilisateur chez qui vous avez le moins de téléchargements en cours, pour ne pas tout attendre dans la même file. Les pistes cherchées il y a moins de 15 min sont vérifiées dans le cache ; au-delà, elles sont recherchées à nouveau, car les utilisateurs ont pu se déconnecter ; une piste dont un téléchargement est listé dans l'onglet Téléchargements (en cours, terminé ou en échec) n'est pas touchée. Dans tous les autres cas, la piste reste à choisir à la main.</p>
+                <p class="setting-help">Pendant la recherche auto (et l'amélioration auto, en FLAC/WAV seulement), une piste est téléchargée sans clic seulement si un fichier a tous ses artistes, son titre et exactement sa version (même remixeur, aucun remix, edit, extended, live… en plus ou en moins), la même durée à 2 s près, et est en FLAC/WAV ou MP3 320. Le FLAC est toujours choisi en premier, puis l'utilisateur chez qui vous avez le moins de téléchargements en cours, pour ne pas tout attendre dans la même file. Les pistes cherchées il y a moins de 15 min sont vérifiées dans le cache ; au-delà, elles sont recherchées à nouveau, car les utilisateurs ont pu se déconnecter ; une piste dont un téléchargement est listé dans l'onglet Téléchargements (en cours, terminé ou en échec) n'est pas touchée. Dans tous les autres cas, la piste reste à choisir à la main.</p>
               </div>
 
               <!-- Maintenance, rarely used: kept apart from the connection settings -->
