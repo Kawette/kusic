@@ -7,12 +7,12 @@
 import fs from "fs";
 import path from "path";
 import type { SlskdAPI } from "../services/slskd/index.js";
-import type { Transfer, UserPresence } from "../types.js";
+import type { QueueEstimate, Transfer, UserPresence } from "../types.js";
 import { downloadsStore, type PendingDownload } from "./store.js";
 import type { Library } from "./library/library.js";
 import { listAudioFiles } from "./library/files.js";
 import { isInside, slskdLocalPath } from "./library/naming.js";
-import { addQueueSample, estimateQueue, type QueueEstimate, type QueueSample } from "./queue-estimate.js";
+import { addQueueSample, estimateQueue, type QueueSample } from "./queue-estimate.js";
 
 const POLL_INTERVAL = 2000;
 const MAX_ATTEMPTS = 10;
@@ -26,6 +26,8 @@ const REMOTE_QUEUE_INTERVAL = 60_000;
  * they are shown as resuming, not failed.
  */
 const RESUME_GRACE = 60_000;
+/** How often to check the Soulseek login while waiting for it (for RESUME_GRACE) */
+const LOGIN_CHECK_INTERVAL = 10_000;
 
 export type DownloadEvent =
   | { type: "placed"; trackId: string; filePath: string }
@@ -79,7 +81,7 @@ export function flattenTransfers(users: RawDownloads[]): TrackedTransfer[] {
 const isRemotelyQueued = (t: Transfer) => /queued/i.test(t.state) && /remotely/i.test(t.state);
 
 /** Stopped because slskd closed (not a failure of the transfer itself). */
-export function isInterrupted(t: { state: string; exception?: string }): boolean {
+function isInterrupted(t: TrackedTransfer): boolean {
   return /errored/i.test(t.state) && /application shut ?down/i.test(t.exception || "");
 }
 
@@ -90,6 +92,7 @@ export class DownloadTracker {
   private generation = 0;
   /** When slskd was seen logged in to Soulseek since it started (0: not yet), for the downloads it resumes */
   private loggedInAt = 0;
+  private loginCheckedAt = 0;
   private polling: Promise<Transfer[]> | null = null;
   /** The poll that follows the running one, shared by the callers meanwhile */
   private nextPoll: Promise<Transfer[]> | null = null;
@@ -116,6 +119,7 @@ export class DownloadTracker {
     if (this.running) return;
     this.running = true;
     this.loggedInAt = 0;
+    this.loginCheckedAt = 0;
     const generation = ++this.generation;
     const loop = async () => {
       await this.refresh().catch((err) => console.error("[Downloads] Poll failed:", err));
@@ -206,15 +210,20 @@ export class DownloadTracker {
     if (generation !== this.generation) return [];
     const resuming = await this.isResuming(api, raw);
     if (generation !== this.generation) return [];
-    const transfers: Transfer[] = raw.map(({ endedAt: _endedAt, exception: _exception, ...t }) => ({
-      ...t,
-      ...(isInterrupted({ state: t.state, exception: _exception }) &&
-        (resuming ? { state: "Resuming" } : { interrupted: true })),
-      trackId: this.pending[keyOf(t.username, t.filename)]?.trackId,
-      userPresence: isRemotelyQueued(t) ? this.presence.get(t.username)?.value : undefined,
-      queueEstimate: isRemotelyQueued(t) ? this.queueStats.get(t.id)?.estimate : undefined,
-      queueCheck: this.queueCheck(t),
-    }));
+    const transfers: Transfer[] = raw.map((r) => {
+      const { endedAt: _endedAt, exception: _exception, ...t } = r;
+      const queued = isRemotelyQueued(t);
+      const askedAt = queued ? this.positionAskedAt.get(t.id) : undefined;
+      return {
+        ...t,
+        ...(isInterrupted(r) && (resuming ? { state: "Resuming" } : { interrupted: true })),
+        trackId: this.pending[keyOf(t.username, t.filename)]?.trackId,
+        userPresence: queued ? this.presence.get(t.username)?.value : undefined,
+        queueEstimate: queued ? this.queueStats.get(t.id)?.estimate : undefined,
+        // When the position was last asked, for the UI's countdown to the next check
+        queueCheck: askedAt ? { at: askedAt, every: REMOTE_QUEUE_INTERVAL } : undefined,
+      };
+    });
     this.push(transfers);
 
     this.refreshRemoteQueues(api, raw);
@@ -225,17 +234,13 @@ export class DownloadTracker {
 
   /** Whether downloads interrupted by closing slskd may still be requested again by it. */
   private async isResuming(api: SlskdAPI, transfers: TrackedTransfer[]): Promise<boolean> {
-    if (!this.loggedInAt && transfers.some(isInterrupted)) {
+    const now = Date.now();
+    if (!this.loggedInAt && now - this.loginCheckedAt >= LOGIN_CHECK_INTERVAL && transfers.some(isInterrupted)) {
+      this.loginCheckedAt = now;
       const { state = "" } = await api.getServerState().catch(() => ({ state: "" }));
       if (state.includes("LoggedIn")) this.loggedInAt = Date.now();
     }
     return !this.loggedInAt || Date.now() - this.loggedInAt < RESUME_GRACE;
-  }
-
-  /** When the position was last asked, for the UI's countdown to the next check. */
-  private queueCheck(t: Transfer): Transfer["queueCheck"] {
-    const at = isRemotelyQueued(t) ? this.positionAskedAt.get(t.id) : undefined;
-    return at ? { at, every: REMOTE_QUEUE_INTERVAL } : undefined;
   }
 
   /**

@@ -134,6 +134,14 @@ export interface SlskdSearchResult {
 
 export type UserPresence = "online" | "away" | "offline";
 
+/** Speed of a remote upload queue (see main/queue-estimate.ts) */
+export interface QueueEstimate {
+  /** Places gained per minute: 0 = no progress, negative = we lost places */
+  rate: number;
+  /** Expected wait in ms, when there is progress */
+  eta?: number;
+}
+
 /** A download as shown in the UI, annotated with the playlist track it is for */
 export interface Transfer {
   username: string;
@@ -148,8 +156,8 @@ export interface Transfer {
   placeInQueue?: number;
   /** Whether the remote user is connected (checked while we wait in their queue) */
   userPresence?: UserPresence;
-  /** Speed of the remote queue (measured while we wait in it, after a few minutes) */
-  queueEstimate?: { rate: number; eta?: number };
+  /** Speed of the remote queue (measured while we wait in it, from the second check) */
+  queueEstimate?: QueueEstimate;
   /** Last check of the queue position and how often it is checked (ms) */
   queueCheck?: { at: number; every: number };
   /** Stopped when slskd closed and not requested again since (user offline…) */
