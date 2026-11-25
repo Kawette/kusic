@@ -112,11 +112,12 @@ function stateDisplay(t) {
   if (s.includes('cancelled')) return { label: 'Annulé', cls: 'state-error' };
   if (s.includes('timedout')) return { label: 'Expiré', cls: 'state-error' };
   if (s.includes('rejected')) return { label: 'Refusé', cls: 'state-error' };
-  // Cut by closing slskd and not requested again at its start: why, when the user is offline
+  // Cut by closing slskd and not requested again at its start: offline is the one sure cause
+  if (t.interrupted && t.userPresence === 'offline') {
+    return { label: 'Hors ligne', cls: 'state-error', title: "Coupé à la fermeture de Kusic : l'utilisateur est hors ligne, réessayez quand il revient" };
+  }
   if (t.interrupted) {
-    return t.userPresence === 'offline'
-      ? { label: 'Hors ligne', cls: 'state-error', title: "Coupé à la fermeture de Kusic : l'utilisateur est hors ligne, réessayez quand il revient" }
-      : { label: 'À relancer', cls: 'state-error', title: "Coupé à la fermeture de Kusic et pas redemandé au démarrage (utilisateur alors injoignable) : réessayez" };
+    return { label: 'Erreur', cls: 'state-error', title: "Coupé à la fermeture de Kusic et pas redemandé au démarrage (utilisateur alors injoignable) : réessayez" };
   }
   if (s.includes('completed')) return { label: 'Erreur', cls: 'state-error' };
   if (isTransferring(t)) return { label: 'En cours', cls: 'state-active' };
