@@ -44,7 +44,6 @@ export async function loadCacheSummary() {
   for (const [key, entry] of Object.entries(summary)) cacheSummary.set(key, entry);
 }
 
-/** Cached { relevant, best } for a track's query, or undefined if not cached. */
 /**
  * A download stands in the way of another one for the track: any listed one
  * for a track without a file; for an upgrade, only one running or asked (the
@@ -64,6 +63,7 @@ function trackKey(track) {
   return key;
 }
 
+/** Cached { relevant, best, certain } for a track's query, or undefined if not cached. */
 export function cachedStats(track) {
   return cacheSummary.get(trackKey(track));
 }
@@ -201,8 +201,8 @@ async function ensureConnected() {
 }
 
 /**
- * Open the search modal for a playlist track.
- * `options.format` presets the format filter (e.g. "flac" to upgrade a file).
+ * Open the search modal for a playlist track. `options.format` presets the
+ * format filter; by default "lossless" for a track to upgrade, else none.
  */
 export async function openSearch(track, options = {}) {
   if (!(await ensureConnected())) return;
@@ -215,7 +215,8 @@ export async function openSearch(track, options = {}) {
 /** Display a track in the (open) modal: its card, then its cached or new results. */
 async function showTrack(track, options = {}) {
   shown = { track };
-  filters.format.value = options.format || '';
+  // An upgrade: only the lossless results matter
+  filters.format.value = options.format ?? (canUpgrade(track) ? 'lossless' : '');
   filters.bitrate.value = '0';
   filters.sort.value = 'duration';
   queryInput.value = trackQuery(track);
@@ -516,11 +517,11 @@ function cancelPrefetch() {
 async function showQueueTrack() {
   const track = queue.tracks[queue.index];
   queuePosition.textContent = `Piste ${queue.index + 1} / ${queue.tracks.length}`;
-  // An upgrade (the track has a lossy file): only the lossless results matter
-  const upgrade = !!track.format;
+  // Validation holds tracks without a file, then tracks to upgrade
+  const upgrade = canUpgrade(track);
   queueHint.textContent = upgrade ? 'Amélioration' : 'Téléchargement';
   queueHint.classList.toggle('upgrade', upgrade);
-  await showTrack(track, upgrade ? { format: 'lossless' } : {});
+  await showTrack(track);
   cancelPrefetch();
   // Searched while this one is checked, so that it shows up-to-date results at once
   const next = queue?.tracks[queue.index + 1];

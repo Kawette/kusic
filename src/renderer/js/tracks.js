@@ -282,7 +282,7 @@ trackList.addEventListener('click', (e) => {
   if (!track) return;
   const { action } = actionEl.dataset;
   if (action === 'download') openSearch(track).catch(toastError);
-  if (action === 'upgrade') openSearch(track, { format: 'lossless' }).catch(toastError);
+  if (action === 'upgrade') openSearch(track).catch(toastError);
   if (action === 'identify') openIdentify(track).catch(toastError);
   if (action === 'play') playTrack(track);
   if (action === 'menu') {
@@ -305,7 +305,8 @@ function showTrackMenu(track, x, y) {
     items.push({ label: 'Résoudre le conflit…', action: () => bus.emit('conflict:open', track.conflictId) });
   }
   if (track.playlistIds) {
-    items.push({ label: 'Rechercher sur Soulseek', action: () => openSearch(track).catch(toastError) });
+    // Every format: the user looks for something else than an upgrade
+    items.push({ label: 'Rechercher sur Soulseek', action: () => openSearch(track, { format: '' }).catch(toastError) });
   }
   if (!track.playlistIds && track.filePath) {
     items.push({ label: 'Identifier…', action: () => openIdentify(track).catch(toastError) });
@@ -371,8 +372,7 @@ $('#btn-refresh-tracks').addEventListener('click', (e) => refreshPlaylists(e.cur
 bus.on('search:open-track', async (trackId) => {
   try {
     const track = await findTrack(trackId);
-    // A track with a (lossy) file: another source for its upgrade
-    if (track) await openSearch(track, track.format ? { format: 'lossless' } : {});
+    if (track) await openSearch(track);
   } catch (err) {
     toastError(err);
   }
