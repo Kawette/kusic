@@ -1623,7 +1623,8 @@ a:hover {
 .dl-col-actions {
   display: flex;
   align-items: center;
-  justify-content: center;
+  /* Right-aligned: the close button (last) stays at the same place on every row */
+  justify-content: flex-end;
   gap: 4px;
 }
 
