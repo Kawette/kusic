@@ -1169,10 +1169,6 @@ a:hover {
   gap: 4px;
 }
 
-.match-tag {
-  white-space: nowrap;
-}
-
 .match-tag.certain {
   background: rgba(46, 204, 113, 0.15);
   color: var(--success);
@@ -1225,8 +1221,6 @@ a:hover {
   color: var(--success);
 }
 
-
-
 /* Soulseek user: status dot + name (search results, downloads) */
 .user-label {
   position: relative;
@@ -1256,6 +1250,7 @@ a:hover {
   border-radius: 4px;
   font-size: 10px;
   font-weight: 600;
+  white-space: nowrap;
 }
 
 .format-badge {
@@ -1437,10 +1432,15 @@ a:hover {
   letter-spacing: 0.5px;
 }
 
-.download-list-header {
+/* Header and rows share the columns: file, user, size, state, progress, actions */
+.download-list-header,
+.dl-row {
   display: grid;
   grid-template-columns: minmax(0, 2fr) 120px 130px 100px 230px 100px;
   gap: 12px;
+}
+
+.download-list-header {
   padding: 8px 16px;
   font-size: 11px;
   text-transform: uppercase;
@@ -1455,9 +1455,6 @@ a:hover {
 }
 
 .dl-row {
-  display: grid;
-  grid-template-columns: minmax(0, 2fr) 120px 130px 100px 230px 100px;
-  gap: 12px;
   padding: 10px 16px;
   align-items: center;
   border-bottom: 1px solid var(--border);
