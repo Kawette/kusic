@@ -579,9 +579,9 @@ export async function toggleAutoSearch(tracks) {
       const waiting = !hasTransferForTrack(track.id);
       // Stale relevant results are searched again to be validated; otherwise cached
       // tracks only to look for a certain match (older entries have no certain count)
-      if (!cached
-        || (waiting && cached.relevant > 0 && !isFresh(cached))
-        || (waiting && autoDownload && (cached.certain ?? cached.relevant) > 0)) {
+      if (!cached || (waiting && (
+        (cached.relevant > 0 && !isFresh(cached))
+        || (autoDownload && (cached.certain ?? cached.relevant) > 0)))) {
         queue.push(track);
       }
     }
@@ -616,12 +616,9 @@ async function autoWorker(run, initialDelay) {
     const track = run.queue.shift();
     const query = trackQuery(track);
     let results = null;
-    const searched = !isFresh(cacheSummary.get(normalizeQuery(query)));
-    if (!searched) {
-      // Recent results (or searched meanwhile, in the modal…): no new search
-      if (run.autoDownload) results = (await api.searchCache.get(query).catch(() => null))?.results;
-    } else {
-      // Not cached, or stale: users may have gone offline (see FRESH_MS)
+    // Not cached, or stale: users may have gone offline (see FRESH_MS)
+    const stale = !isFresh(cacheSummary.get(trackKey(track)));
+    if (stale) {
       const session = searchTrack(track);
       run.sessions.add(session);
       await session.promise;
@@ -634,12 +631,15 @@ async function autoWorker(run, initialDelay) {
         }
       }
       if (!session.error && !session.cancelled) results = session.results;
+    } else if (run.autoDownload) {
+      // Recent results (or searched meanwhile, in the modal…): no new search
+      results = (await api.searchCache.get(query).catch(() => null))?.results;
     }
     if (run.autoDownload && results && auto === run) await downloadCertainMatch(run, track, results);
     if (auto !== run) return;
     run.done++;
     renderAutoState();
-    if (searched && run.queue.length > 0) await sleep(AUTO_SEARCH_DELAY);
+    if (stale && run.queue.length > 0) await sleep(AUTO_SEARCH_DELAY);
   }
 }
 
@@ -647,10 +647,11 @@ async function autoWorker(run, initialDelay) {
 async function downloadCertainMatch(run, track, results) {
   if (hasTransferForTrack(track.id)) return;
   // One file per user: when a user is unreachable, their other files would fail too
-  const users = new Set();
-  const matches = certainMatches(results, track, activeDownloadsWith)
-    .filter((m) => !users.has(m.username) && users.add(m.username))
-    .slice(0, AUTO_DOWNLOAD_TRIES);
+  const matches = [];
+  for (const match of certainMatches(results, track, activeDownloadsWith)) {
+    if (matches.length === AUTO_DOWNLOAD_TRIES) break;
+    if (!matches.some((m) => m.username === match.username)) matches.push(match);
+  }
   // Unticked during the run: no more automatic downloads
   if (!matches.length || !(await api.getSettings()).autoDownload) return;
   for (const match of matches) {
