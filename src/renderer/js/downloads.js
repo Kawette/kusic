@@ -22,6 +22,10 @@ let mode = 'downloads'; // or 'uploads'
 let byTrack = new Map(); // trackId -> most relevant transfer
 let withTransfer = new Set(); // trackIds of every listed transfer (succeeded and failed too)
 let activeByUser = new Map(); // username -> downloads not finished yet
+// Requested files not in a pushed list yet ({ username, filename, trackId, at }):
+// a list polled just before the request must not drop them from the counts
+let requests = [];
+const REQUEST_TIMEOUT = 60_000;
 let rendered = [];
 let renderedSignature = null;
 
@@ -131,29 +135,29 @@ export function hasTransferForTrack(trackId) {
 /**
  * Ask slskd for a file. It counts at once, while the user is contacted, for
  * hasTransferForTrack (no second download of the track) and activeDownloadsWith
- * (the next choice of user), until the pushed list has it.
+ * (the next choice of user), until a pushed list has it.
  */
 export async function requestDownload(username, filename, size, trackId) {
   // A new source replaces the failed downloads of the track. The same file
   // must leave slskd's list before being asked again (as a retry does).
   const failed = trackId ? transfers.filter((t) => t.trackId === trackId && isFailed(t.state)) : [];
   const sameFile = failed.filter((t) => t.username === username && t.filename === filename);
-  for (const t of sameFile) await api.slskd.cancelDownload(t.username, t.id, t.filename, true);
+  const removeAll = (list) => Promise.all(list.map((t) => api.slskd.cancelDownload(t.username, t.id, t.filename, true)))
+    // Already gone from slskd (removed meanwhile): nothing to do
+    .catch((err) => console.warn('[Downloads] Could not remove a failed download:', err));
+  await removeAll(sameFile);
 
-  const reserved = trackId && !withTransfer.has(trackId);
-  activeByUser.set(username, activeDownloadsWith(username) + 1);
-  if (reserved) withTransfer.add(trackId);
+  const request = { username, filename, trackId, at: Date.now() };
+  requests.push(request);
+  rebuild();
   try {
     await api.slskd.download(username, filename, size, trackId);
   } catch (err) {
-    activeByUser.set(username, Math.max(0, activeDownloadsWith(username) - 1));
-    if (reserved) withTransfer.delete(trackId);
+    requests = requests.filter((r) => r !== request);
+    rebuild();
     throw err;
   }
-
-  const others = failed.filter((t) => !sameFile.includes(t));
-  await Promise.all(others.map((t) => api.slskd.cancelDownload(t.username, t.id, t.filename, true)))
-    .catch((err) => console.warn('[Downloads] Could not remove a failed download:', err));
+  await removeAll(failed.filter((t) => !sameFile.includes(t)));
 }
 
 /** Our downloads from this user that are not finished (waiting or running). */
@@ -166,23 +170,33 @@ export function transferForTrack(trackId) {
   return byTrack.get(trackId) || null;
 }
 
-function setTransfers(next) {
-  transfers = next || [];
+/** Recompute the per-track and per-user lookups from the list and the pending requests. */
+function rebuild() {
   byTrack = new Map();
   withTransfer = new Set();
   activeByUser = new Map();
-  let active = 0;
   for (const t of transfers) {
-    if (!isFinished(t.state)) {
-      active++;
-      activeByUser.set(t.username, activeDownloadsWith(t.username) + 1);
-    }
+    if (!isFinished(t.state)) activeByUser.set(t.username, activeDownloadsWith(t.username) + 1);
     if (!t.trackId) continue;
     withTransfer.add(t.trackId);
     if (isSucceeded(t.state)) continue;
     const current = byTrack.get(t.trackId);
     if (!current || (isFinished(current.state) && !isFinished(t.state))) byTrack.set(t.trackId, t);
   }
+  const now = Date.now();
+  requests = requests.filter((r) => now - r.at < REQUEST_TIMEOUT && !transfers.some(
+    (t) => t.username === r.username && t.filename === r.filename && !isFailed(t.state),
+  ));
+  for (const r of requests) {
+    activeByUser.set(r.username, activeDownloadsWith(r.username) + 1);
+    if (r.trackId) withTransfer.add(r.trackId);
+  }
+}
+
+function setTransfers(next) {
+  transfers = next || [];
+  rebuild();
+  const active = transfers.filter((t) => !isFinished(t.state)).length;
   navBadge.textContent = active;
   navBadge.hidden = active === 0;
   if ($('#view-downloads').classList.contains('active')) render();
