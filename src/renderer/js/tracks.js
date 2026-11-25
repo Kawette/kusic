@@ -99,7 +99,6 @@ export function setPlaylistOptions(playlists) {
 
 const otherSourceButton = `<button class="track-download-btn" data-action="download" title="Choisir une autre source">${icon(ICONS.download, 16)}</button>`;
 
-/** The "Fichier" column: quality, download state, conflict or search button. */
 /**
  * Lossy file: the upgrade button shows the search, download or cached results
  * of a better version, like the download button of a track without a file.
@@ -124,6 +123,7 @@ function upgradeHtml(track) {
     : button(icon(ICONS.upgrade, 16), 'Aucune version sans perte en cache : relancer la recherche', ' empty');
 }
 
+/** The "Fichier" column: quality, download state, conflict or search button. */
 function statusHtml(track) {
   if (track.conflictId) {
     return `<span class="status-tag conflict" title="Deux fichiers pour cette piste : menu ⋯ → Résoudre le conflit">Conflit</span>`;
