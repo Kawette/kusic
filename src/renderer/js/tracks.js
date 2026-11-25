@@ -6,7 +6,8 @@ import {
   withBusyButton,
 } from './ui.js';
 import {
-  cachedStats, isSearching, openSearch, openValidation, toggleAutoSearch, toggleAutoUpgrade, validationQueue,
+  cachedStats, canUpgrade, isSearching, openSearch, openValidation, toggleAutoSearch, toggleAutoUpgrade,
+  validationQueue,
 } from './search.js';
 import { isFinished, isTransferring, queueWait, transferForTrack, waitingLabel } from './downloads.js';
 import { openIdentify } from './identify.js';
@@ -99,6 +100,13 @@ export function setPlaylistOptions(playlists) {
 
 const otherSourceButton = `<button class="track-download-btn" data-action="download" title="Choisir une autre source">${icon(ICONS.download, 16)}</button>`;
 
+/** "en cours (42 %)", "en file (12ᵉ), attente estimée ~25 min"… for a download not finished. */
+function transferStateText(transfer) {
+  if (isTransferring(transfer)) return `en cours (${Math.round(transfer.percentComplete)} %)`;
+  const wait = queueWait(transfer);
+  return `${waitingLabel(transfer).toLowerCase()}${wait ? `, attente estimée ${wait}` : ''}`;
+}
+
 /**
  * Lossy file: the upgrade button shows the search, download or cached results
  * of a better version, like the download button of a track without a file.
@@ -109,11 +117,8 @@ function upgradeHtml(track) {
   if (isSearching(track)) return button(SPINNER, "Recherche d'une meilleure qualité en cours", ' searching');
   const transfer = transferForTrack(track.id);
   if (transfer && !isFinished(transfer.state)) {
-    const wait = queueWait(transfer);
-    const state = isTransferring(transfer)
-      ? `en cours (${Math.round(transfer.percentComplete)} %)`
-      : `${waitingLabel(transfer).toLowerCase()}${wait ? `, attente estimée ${wait}` : ''}`;
-    return button(icon(ICONS.clock, 16), `Meilleure qualité : téléchargement ${state} · cliquer pour choisir une autre source`);
+    return button(icon(ICONS.clock, 16),
+      `Meilleure qualité : téléchargement ${transferStateText(transfer)} · cliquer pour choisir une autre source`);
   }
   // A failed transfer may be the first try of the current file: failures stay in the downloads view
   const stats = cachedStats(track);
@@ -136,7 +141,7 @@ function statusHtml(track) {
       formatSize(track.fileSize),
       baseName(track.filePath),
     ].filter((line) => line && line !== '—').join('\n');
-    const upgrade = !isLossless(track.format) && track.playlistIds ? upgradeHtml(track) : '';
+    const upgrade = canUpgrade(track) ? upgradeHtml(track) : '';
     return `${upgrade}<span class="quality-badge" data-tooltip="${escapeHtml(details)}">${formatBadge(track.format)}</span>`;
   }
 
@@ -149,16 +154,12 @@ function statusHtml(track) {
     : otherSourceButton;
   const transfer = transferForTrack(track.id);
   if (transfer && !isFinished(transfer.state)) {
-    const pct = Math.round(transfer.percentComplete);
     if (transfer.userPresence === 'offline') {
       return `<span class="status-tag failed" title="L'utilisateur qui doit envoyer ce fichier est hors ligne">Hors ligne</span>${searchButton}`;
     }
     if (searching) return searchButton;
     // A source is chosen: the download button says so, the details are in the downloads view
-    const wait = queueWait(transfer);
-    const state = isTransferring(transfer)
-      ? `en cours (${pct} %)`
-      : `${waitingLabel(transfer).toLowerCase()}${wait ? `, attente estimée ${wait}` : ''}`;
+    const state = transferStateText(transfer);
     return `<button class="track-download-btn" data-action="download" title="Téléchargement ${escapeHtml(state)} · cliquer pour choisir une autre source">${icon(ICONS.clock, 16)}</button>`;
   }
   if (transfer) {

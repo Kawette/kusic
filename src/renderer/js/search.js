@@ -673,11 +673,14 @@ export async function toggleAutoSearch(tracks) {
   }
 }
 
-/** Displayed tracks with a lossy file (MP3…), one per query, not being downloaded or in conflict. */
+/** A playlist track whose file is lossy (MP3…): a lossless version may replace it. */
+export const canUpgrade = (track) => !!track.format && !isLossless(track.format) && !!track.playlistIds;
+
+/** Displayed tracks with a lossy file, one per query, not being downloaded or in conflict. */
 function upgradableTracks(tracks) {
   const keys = new Set();
   return tracks.filter((track) => {
-    if (!track.format || isLossless(track.format) || !track.playlistIds) return false;
+    if (!canUpgrade(track)) return false;
     if (track.conflictId || hasDownloadFor(track)) return false;
     const key = trackKey(track);
     if (keys.has(key) || sessions.has(key)) return false;
