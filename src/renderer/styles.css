@@ -1222,8 +1222,9 @@ a:hover {
   color: var(--text-muted);
 }
 
-.slskd-queue-hint.certain {
-  color: var(--success);
+/* Validation of an upgrade: the track already has a (lossy) file */
+.slskd-queue-hint.upgrade {
+  color: var(--accent);
 }
 
 /* Soulseek user: status dot + name (search results, downloads) */

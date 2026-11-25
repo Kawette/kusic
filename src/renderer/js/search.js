@@ -7,7 +7,7 @@
 import {
   $, api, baseName, bus, closeModal, durationBand, durationMatch, errorMessage, escapeHtml,
   formatBadge, formatDuration, formatSize, formatTime, icon, ICONS, isLossless, normalizeQuery,
-  openModal, showToast, sourceBadge, SPINNER, thumb, toastError, userLabel,
+  openModal, qualityLabel, showToast, sourceBadge, SPINNER, thumb, toastError, userLabel,
 } from './ui.js';
 import {
   activeDownloadsWith, failedDownloadLabel, hasTransferForTrack, pendingDownloadFor, refreshDownloads,
@@ -318,12 +318,6 @@ function renderResults(searching) {
   const certain = relevant.filter((r) => doubts.get(r).length === 0).sort(sourceOrder(activeDownloadsWith));
   const rank = new Map(certain.map((r, i) => [r, i]));
   const best = certain[0];
-  if (queue) {
-    queueHint.textContent = best
-      ? 'Correspondance certaine : c\'est le fichier que le mode auto télécharge'
-      : relevant.length ? 'Rien de certain : choisissez un fichier ou passez' : '';
-    queueHint.classList.toggle('certain', !!best);
-  }
   const all = [
     ...applyFilters(relevant, (r) => rank.get(r) ?? Infinity),
     ...(showOffTopic ? applyFilters(offTopic) : []),
@@ -511,9 +505,13 @@ function cancelPrefetch() {
 async function showQueueTrack() {
   const track = queue.tracks[queue.index];
   queuePosition.textContent = `Piste ${queue.index + 1} / ${queue.tracks.length}`;
-  queueHint.textContent = '';
-  // An upgrade: only the lossless results matter
-  await showTrack(track, track.format ? { format: 'lossless' } : {});
+  // An upgrade: said in the bar, and only the lossless results matter
+  const current = track.format && [track.format.toUpperCase(), qualityLabel(track)].filter(Boolean).join(' ');
+  queueHint.textContent = current
+    ? `Amélioration : remplacer votre ${current} par une version sans perte (les deux fichiers passeront en conflit)`
+    : '';
+  queueHint.classList.toggle('upgrade', !!current);
+  await showTrack(track, current ? { format: 'lossless' } : {});
   cancelPrefetch();
   // Searched while this one is checked, so that it shows up-to-date results at once
   const next = queue?.tracks[queue.index + 1];
