@@ -370,7 +370,8 @@ $('#btn-refresh-tracks').addEventListener('click', (e) => refreshPlaylists(e.cur
 bus.on('search:open-track', async (trackId) => {
   try {
     const track = await findTrack(trackId);
-    if (track) await openSearch(track);
+    // A track with a (lossy) file: another source for its upgrade
+    if (track) await openSearch(track, track.format ? { format: 'lossless' } : {});
   } catch (err) {
     toastError(err);
   }
