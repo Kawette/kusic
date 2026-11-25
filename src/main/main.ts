@@ -407,7 +407,12 @@ ipcMain.handle(
     _,
     { username, id, filename, size }: { username: string; id: string; filename: string; size: number },
   ) => {
-    await slskd.getAPI().retryDownload(username, id, filename, size);
+    const api = slskd.getAPI();
+    // Retrying removes the failed transfer first: with an offline user, nothing would be left
+    if ((await api.getUserPresence(username).catch(() => null)) === "offline") {
+      throw new Error(`${username} est hors ligne : réessayez quand il revient, ou choisissez une autre source`);
+    }
+    await api.retryDownload(username, id, filename, size);
     downloads.resetAttempts(username, filename);
     await downloads.refresh();
     return true;
