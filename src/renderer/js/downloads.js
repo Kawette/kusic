@@ -113,6 +113,9 @@ function stateDisplay(t) {
   if (s.includes('timedout')) return { label: 'Expiré', cls: 'state-error' };
   if (s.includes('rejected')) return { label: 'Refusé', cls: 'state-error' };
   // Cut by closing slskd and not requested again at its start: offline is the one sure cause
+  if (t.interrupted && !t.userPresence) {
+    return { label: 'Vérification…', cls: 'state-queued', title: "Coupé à la fermeture de Kusic : vérification de la présence de l'utilisateur" };
+  }
   if (t.interrupted && t.userPresence === 'offline') {
     return { label: 'Hors ligne', cls: 'state-error', title: "Coupé à la fermeture de Kusic : l'utilisateur est hors ligne, réessayez quand il revient" };
   }

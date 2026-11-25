@@ -103,7 +103,7 @@ export class DownloadTracker {
   /** Transfer id -> recent places in the remote queue, and the speed they give */
   private queueStats = new Map<string, { samples: QueueSample[]; estimate?: QueueEstimate }>();
   /** Username -> last known presence and when it was checked */
-  private presence = new Map<string, { value: UserPresence; at: number }>();
+  private presence = new Map<string, { value?: UserPresence; at: number }>();
   /** Single source of truth, written through to downloads.json */
   private pending: Record<string, PendingDownload> = downloadsStore.get("pending");
 
@@ -310,7 +310,7 @@ export class DownloadTracker {
     for (const username of new Set(watched.map((t) => t.username))) {
       const known = this.presence.get(username);
       if (known && now - known.at < REMOTE_QUEUE_INTERVAL) continue;
-      this.presence.set(username, { value: known?.value ?? "online", at: now });
+      this.presence.set(username, { value: known?.value, at: now }); // Unknown until answered
       api
         .getUserPresence(username)
         .then((value) => this.presence.set(username, { value, at: now }))
