@@ -317,24 +317,28 @@ a:hover {
   background: var(--bg-hover);
 }
 
-#btn-auto-search {
+#btn-auto-search,
+#btn-auto-upgrade {
   position: relative;
   border: 1px solid var(--border);
   transition: all 0.3s ease;
 }
 
-/* ─ Active state ─ */
-#btn-auto-search.active {
+/* ─ Active state (running) ─ */
+#btn-auto-search.active,
+#btn-auto-upgrade.active {
   background: var(--success);
   border-color: var(--success);
   color: white;
 }
 
-#btn-auto-search.active:hover {
+#btn-auto-search.active:hover,
+#btn-auto-upgrade.active:hover {
   background: #1a9b5c;
 }
 
-#btn-auto-search.active::after {
+#btn-auto-search.active::after,
+#btn-auto-upgrade.active::after {
   content: '';
   width: 16px;
   height: 16px;
@@ -345,7 +349,8 @@ a:hover {
   order: -1;
 }
 
-#auto-search-status {
+#auto-search-status,
+#auto-upgrade-status {
   font-size: 13px;
   font-weight: 500;
   line-height: 1;
