@@ -20,6 +20,9 @@ let transfers = [];
 let uploads = []; // What others download from us, fetched while that tab is shown
 let mode = 'downloads'; // or 'uploads'
 let byTrack = new Map(); // trackId -> most relevant transfer
+const fileKey = (username, filename) => `${username}\u0000${filename}`;
+let activeFiles = new Set(); // fileKey of transfers running, waiting or succeeded
+let failedFiles = new Map(); // fileKey -> failed transfer
 let withTransfer = new Set(); // trackIds of every listed transfer (succeeded and failed too)
 let activeByUser = new Map(); // username -> downloads not finished yet
 // Requested files not in a pushed list yet ({ username, filename, trackId, at }):
@@ -91,7 +94,7 @@ function queueSpeed(estimate) {
 /** Place and speed in a remote queue, shown where the progress bar goes once the transfer starts. */
 function queueProgress(t) {
   // Always grouped: "1 708", not "1708" (French Intl only groups from 5 digits)
-  const place = `${String(t.placeInQueue).replace(/\B(?=(\d{3})+$)/g, '\u202f')}`;
+  const place = String(t.placeInQueue).replace(/\B(?=(\d{3})+$)/g, '\u202f');
   const { text, title } = queueSpeed(t.queueEstimate);
   return `<span class="dl-queue" title="Position ${place} dans la file de cet utilisateur · ${escapeHtml(title)} · le cercle se remplit jusqu'à la prochaine vérification">
     <span class="dl-queue-place">Position : <strong>${place}</strong></span>
@@ -118,12 +121,12 @@ function stateDisplay(t) {
 
 /** True if this file is already being (or was) downloaded successfully. */
 export function pendingDownloadFor(username, filename) {
-  return transfers.some((t) => t.username === username && t.filename === filename && !isFailed(t.state));
+  return activeFiles.has(fileKey(username, filename));
 }
 
 /** Why the download of this file failed ("Expiré", "Refusé"…), or '' if it did not. */
 export function failedDownloadLabel(username, filename) {
-  const failed = transfers.find((t) => t.username === username && t.filename === filename && isFailed(t.state));
+  const failed = failedFiles.get(fileKey(username, filename));
   return failed ? stateDisplay(failed).label : '';
 }
 
@@ -176,7 +179,11 @@ function rebuild() {
   byTrack = new Map();
   withTransfer = new Set();
   activeByUser = new Map();
+  activeFiles = new Set();
+  failedFiles = new Map();
   for (const t of transfers) {
+    if (isFailed(t.state)) failedFiles.set(fileKey(t.username, t.filename), t);
+    else activeFiles.add(fileKey(t.username, t.filename));
     if (!isFinished(t.state)) activeByUser.set(t.username, activeDownloadsWith(t.username) + 1);
     if (!t.trackId) continue;
     withTransfer.add(t.trackId);
@@ -185,9 +192,7 @@ function rebuild() {
     if (!current || (isFinished(current.state) && !isFinished(t.state))) byTrack.set(t.trackId, t);
   }
   const now = Date.now();
-  requests = requests.filter((r) => now - r.at < REQUEST_TIMEOUT && !transfers.some(
-    (t) => t.username === r.username && t.filename === r.filename && !isFailed(t.state),
-  ));
+  requests = requests.filter((r) => now - r.at < REQUEST_TIMEOUT && !activeFiles.has(fileKey(r.username, r.filename)));
   for (const r of requests) {
     activeByUser.set(r.username, activeDownloadsWith(r.username) + 1);
     if (r.trackId) withTransfer.add(r.trackId);

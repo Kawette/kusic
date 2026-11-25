@@ -45,15 +45,27 @@ export async function loadCacheSummary() {
 }
 
 /** Cached { relevant, best } for a track's query, or undefined if not cached. */
+// trackQuery runs a dozen regexes and statuses ask for it on every refresh:
+// the key is computed once per track object (a sync brings new objects)
+const trackKeys = new WeakMap();
+function trackKey(track) {
+  let key = trackKeys.get(track);
+  if (key === undefined) {
+    key = normalizeQuery(trackQuery(track));
+    trackKeys.set(track, key);
+  }
+  return key;
+}
+
 export function cachedStats(track) {
-  return cacheSummary.get(normalizeQuery(trackQuery(track)));
+  return cacheSummary.get(trackKey(track));
 }
 
 // ─── Sessions ───────────────────────────────────────────────
 const sessions = new Map(); // key -> running session
 
 export function isSearching(track) {
-  return sessions.has(normalizeQuery(trackQuery(track)));
+  return sessions.has(trackKey(track));
 }
 
 /** Run one slskd search and keep `session.results` updated until it completes. */
@@ -240,7 +252,7 @@ async function showQuery(query, { force = false } = {}) {
 
   // Only the track's own query gets the title-only second try
   const track = view.track;
-  const fallback = key === normalizeQuery(trackQuery(track)) ? fallbackQuery(track) : '';
+  const fallback = key === trackKey(track) ? fallbackQuery(track) : '';
   view.session = runSearch(query, track, { force, fallback });
   renderSession(view.session);
 }
@@ -439,7 +451,7 @@ function missingTracks(tracks) {
   const list = [];
   for (const track of tracks) {
     if (track.format || !track.playlistIds) continue;
-    const key = normalizeQuery(trackQuery(track));
+    const key = trackKey(track);
     if (keys.has(key)) continue;
     keys.add(key);
     list.push({ track, key });
