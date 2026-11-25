@@ -7,7 +7,7 @@
 import {
   $, api, baseName, bus, closeModal, durationBand, durationMatch, errorMessage, escapeHtml,
   formatBadge, formatDuration, formatSize, formatTime, icon, ICONS, isLossless, normalizeQuery,
-  openModal, qualityLabel, showToast, sourceBadge, SPINNER, thumb, toastError, userLabel,
+  openModal, showToast, sourceBadge, SPINNER, thumb, toastError, userLabel,
 } from './ui.js';
 import {
   activeDownloadsWith, failedDownloadLabel, hasTransferForTrack, pendingDownloadFor, refreshDownloads,
@@ -505,13 +505,11 @@ function cancelPrefetch() {
 async function showQueueTrack() {
   const track = queue.tracks[queue.index];
   queuePosition.textContent = `Piste ${queue.index + 1} / ${queue.tracks.length}`;
-  // An upgrade: said in the bar, and only the lossless results matter
-  const current = track.format && [track.format.toUpperCase(), qualityLabel(track)].filter(Boolean).join(' ');
-  queueHint.textContent = current
-    ? `Amélioration : remplacer votre ${current} par une version sans perte (les deux fichiers passeront en conflit)`
-    : '';
-  queueHint.classList.toggle('upgrade', !!current);
-  await showTrack(track, current ? { format: 'lossless' } : {});
+  // An upgrade (the track has a lossy file): only the lossless results matter
+  const upgrade = !!track.format;
+  queueHint.textContent = upgrade ? 'Amélioration' : 'Téléchargement';
+  queueHint.classList.toggle('upgrade', upgrade);
+  await showTrack(track, upgrade ? { format: 'lossless' } : {});
   cancelPrefetch();
   // Searched while this one is checked, so that it shows up-to-date results at once
   const next = queue?.tracks[queue.index + 1];
