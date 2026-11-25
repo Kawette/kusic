@@ -21,8 +21,9 @@ const STALE_AFTER = 7 * 24 * 60 * 60 * 1000;
 const REMOTE_QUEUE_INTERVAL = 60_000;
 /**
  * slskd marks the downloads running when it closes as errored, then, a few
- * seconds after it starts again, requests them anew (new transfers replacing
- * the old ones). Meanwhile they are shown as resuming, not failed.
+ * seconds after logging in to Soulseek again, requests them anew (new
+ * transfers replacing the old ones). Until then and for this long after,
+ * they are shown as resuming, not failed.
  */
 const RESUME_GRACE = 60_000;
 
@@ -87,8 +88,8 @@ export class DownloadTracker {
   private timer: NodeJS.Timeout | null = null;
   private running = false;
   private generation = 0;
-  /** When slskd was last started, for the downloads it resumes */
-  private startedAt = 0;
+  /** When slskd was seen logged in to Soulseek since it started (0: not yet), for the downloads it resumes */
+  private loggedInAt = 0;
   private polling: Promise<Transfer[]> | null = null;
   private lastPushed = "";
   /** Transfer id -> when its queue position was last requested */
@@ -112,7 +113,7 @@ export class DownloadTracker {
   start(): void {
     if (this.running) return;
     this.running = true;
-    this.startedAt = Date.now();
+    this.loggedInAt = 0;
     const generation = ++this.generation;
     const loop = async () => {
       await this.refresh().catch((err) => console.error("[Downloads] Poll failed:", err));
@@ -188,7 +189,8 @@ export class DownloadTracker {
     const raw = flattenTransfers((await api.getDownloads()) as RawDownloads[]);
     // Stopped while the request was in flight: drop the stale list
     if (generation !== this.generation) return [];
-    const resuming = Date.now() - this.startedAt < RESUME_GRACE;
+    const resuming = await this.isResuming(api, raw);
+    if (generation !== this.generation) return [];
     const transfers: Transfer[] = raw.map(({ endedAt: _endedAt, exception: _exception, ...t }) => ({
       ...t,
       ...(isInterrupted({ state: t.state, exception: _exception }) &&
@@ -204,6 +206,15 @@ export class DownloadTracker {
     await this.processFinished(raw);
     this.pruneStale(raw);
     return transfers;
+  }
+
+  /** Whether downloads interrupted by closing slskd may still be requested again by it. */
+  private async isResuming(api: SlskdAPI, transfers: TrackedTransfer[]): Promise<boolean> {
+    if (!this.loggedInAt && transfers.some(isInterrupted)) {
+      const { state = "" } = await api.getServerState().catch(() => ({ state: "" }));
+      if (state.includes("LoggedIn")) this.loggedInAt = Date.now();
+    }
+    return !this.loggedInAt || Date.now() - this.loggedInAt < RESUME_GRACE;
   }
 
   /** When the position was last asked, for the UI's countdown to the next check. */
