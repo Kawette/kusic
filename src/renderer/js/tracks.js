@@ -100,6 +100,30 @@ export function setPlaylistOptions(playlists) {
 const otherSourceButton = `<button class="track-download-btn" data-action="download" title="Choisir une autre source">${icon(ICONS.download, 16)}</button>`;
 
 /** The "Fichier" column: quality, download state, conflict or search button. */
+/**
+ * Lossy file: the upgrade button shows the search, download or cached results
+ * of a better version, like the download button of a track without a file.
+ */
+function upgradeHtml(track) {
+  const button = (content, title, cls = '') =>
+    `<button class="track-download-btn${cls}" data-action="upgrade" title="${escapeHtml(title)}">${content}</button>`;
+  if (isSearching(track)) return button(SPINNER, "Recherche d'une meilleure qualité en cours", ' searching');
+  const transfer = transferForTrack(track.id);
+  if (transfer && !isFinished(transfer.state)) {
+    const wait = queueWait(transfer);
+    const state = isTransferring(transfer)
+      ? `en cours (${Math.round(transfer.percentComplete)} %)`
+      : `${waitingLabel(transfer).toLowerCase()}${wait ? `, attente estimée ${wait}` : ''}`;
+    return button(icon(ICONS.clock, 16), `Meilleure qualité : téléchargement ${state} · cliquer pour choisir une autre source`);
+  }
+  // A failed transfer may be the first try of the current file: failures stay in the downloads view
+  const stats = cachedStats(track);
+  if (!stats) return button(icon(ICONS.upgrade, 16), 'Chercher une meilleure qualité (FLAC/WAV)');
+  return isLossless(stats.best)
+    ? button(icon(ICONS.upgrade, 16), `Version ${stats.best} trouvée : cliquer pour la choisir`, ' cached')
+    : button(icon(ICONS.upgrade, 16), 'Aucune version sans perte en cache : relancer la recherche', ' empty');
+}
+
 function statusHtml(track) {
   if (track.conflictId) {
     return `<span class="status-tag conflict" title="Deux fichiers pour cette piste : menu ⋯ → Résoudre le conflit">Conflit</span>`;
@@ -112,9 +136,7 @@ function statusHtml(track) {
       formatSize(track.fileSize),
       baseName(track.filePath),
     ].filter((line) => line && line !== '—').join('\n');
-    const upgrade = !isLossless(track.format) && track.playlistIds
-      ? `<button class="track-download-btn" data-action="upgrade" title="Chercher une meilleure qualité (FLAC)">${icon(ICONS.upgrade, 16)}</button>`
-      : '';
+    const upgrade = !isLossless(track.format) && track.playlistIds ? upgradeHtml(track) : '';
     return `${upgrade}<span class="quality-badge" data-tooltip="${escapeHtml(details)}">${formatBadge(track.format)}</span>`;
   }
 
@@ -259,7 +281,7 @@ trackList.addEventListener('click', (e) => {
   if (!track) return;
   const { action } = actionEl.dataset;
   if (action === 'download') openSearch(track).catch(toastError);
-  if (action === 'upgrade') openSearch(track, { format: 'flac' }).catch(toastError);
+  if (action === 'upgrade') openSearch(track, { format: 'lossless' }).catch(toastError);
   if (action === 'identify') openIdentify(track).catch(toastError);
   if (action === 'play') playTrack(track);
   if (action === 'menu') {
