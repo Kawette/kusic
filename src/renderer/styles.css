@@ -317,28 +317,25 @@ a:hover {
   background: var(--bg-hover);
 }
 
-#btn-auto-search,
-#btn-auto-upgrade {
+/* Auto-search and auto-upgrade buttons */
+.btn-auto {
   position: relative;
   border: 1px solid var(--border);
   transition: all 0.3s ease;
 }
 
 /* ─ Active state (running) ─ */
-#btn-auto-search.active,
-#btn-auto-upgrade.active {
+.btn-auto.active {
   background: var(--success);
   border-color: var(--success);
   color: white;
 }
 
-#btn-auto-search.active:hover,
-#btn-auto-upgrade.active:hover {
+.btn-auto.active:hover {
   background: #1a9b5c;
 }
 
-#btn-auto-search.active::after,
-#btn-auto-upgrade.active::after {
+.btn-auto.active::after {
   content: '';
   width: 16px;
   height: 16px;
@@ -349,8 +346,7 @@ a:hover {
   order: -1;
 }
 
-#auto-search-status,
-#auto-upgrade-status {
+.auto-status {
   font-size: 13px;
   font-weight: 500;
   line-height: 1;
