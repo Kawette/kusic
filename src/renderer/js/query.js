@@ -3,7 +3,7 @@
 // so queries must be short and spelled like file names: main artist + title,
 // no "feat.", no "(Original Mix)", no accents or punctuation.
 
-import { formatDuration, isLossless } from './format.js';
+import { formatDuration } from './format.js';
 
 /** Words that make a version a different track: kept in queries. */
 const VERSION = /\b(remix|rmx|edit|bootleg|rework|vip|flip|remake|mashup|dub)\b/i;
@@ -149,11 +149,20 @@ export function certaintyOf(track) {
 }
 
 /**
+ * Formats a certain match may have, as the settings say: other lossless ones
+ * (AIFF, ALAC, APE) are not read by the built-in player.
+ */
+function isCertainFormat(result) {
+  const ext = (result.extension || '').toLowerCase();
+  return ext === 'flac' || ext === 'wav' || (ext === 'mp3' && (result.bitRate || 0) >= MIN_MP3_BITRATE);
+}
+
+/**
  * Why a result is not certainly the track (short labels, e.g. "Extended",
  * "Durée +1:17", "Artiste absent : Morelia"); empty when it is certain:
  * relevant, every credited artist in the path, every word of the title and its
  * version (remixer…) in the file name, no version marker more or less, same
- * length within 2 s, and lossless or MP3 320.
+ * length within 2 s, and FLAC, WAV or MP3 320.
  */
 export function matchDoubts(result, track, certainty = certaintyOf(track)) {
   const { relevance, credited, wanted, version, versionOf, duration } = certainty;
@@ -185,7 +194,7 @@ export function matchDoubts(result, track, certainty = certaintyOf(track)) {
     if (Math.abs(gap) > CERTAIN_DURATION_MS) doubts.push(`Durée ${gap < 0 ? '−' : '+'}${formatDuration(Math.abs(gap))}`);
   }
 
-  if (!isLossless(result.extension) && !(result.extension === 'mp3' && (result.bitRate || 0) >= MIN_MP3_BITRATE)) {
+  if (!isCertainFormat(result)) {
     const ext = (result.extension || '?').toUpperCase();
     doubts.push(result.extension === 'mp3' ? `${ext} ${result.bitRate || '?'} kbps` : ext);
   }
@@ -197,10 +206,10 @@ export function isCertainMatch(result, track, certainty = certaintyOf(track)) {
   return matchDoubts(result, track, certainty).length === 0;
 }
 
-const formatRank = (r) => (r.extension === 'flac' ? 2 : isLossless(r.extension) ? 1 : 0);
+const formatRank = (r) => ({ flac: 2, wav: 1 })[(r.extension || '').toLowerCase()] || 0;
 
 /**
- * Order of certain sources: FLAC always first, then other lossless; within a
+ * Order of certain sources: FLAC always first, then WAV; within a
  * format, the user with the fewest of our running downloads (spreads them, a
  * user's queue being often slow or capped), then free slot, shortest queue,
  * fastest user. `downloadsWith(username)`: our running downloads from that user.

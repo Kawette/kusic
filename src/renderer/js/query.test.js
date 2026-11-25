@@ -123,6 +123,9 @@ describe('certain matches (automatic download)', () => {
     expect(matchDoubts(file('a/Luka & Morelia - Breathe.mp3', { bitRate: 256, length: 214 }), t))
       .toEqual(['MP3 256 kbps']); // 2 s off: still the same length
     expect(matchDoubts(file('a/Luka & Morelia - Breathe.flac', { length: 216 }), t)).toEqual([]);
+    // Lossless but not read by the built-in player
+    expect(matchDoubts(file('a/Luka & Morelia - Breathe.aiff', { length: 216 }), t)).toEqual(['AIFF']);
+    expect(matchDoubts(file('a/Luka & Morelia - Breathe.wav', { length: 216 }), t)).toEqual([]);
     const remix = song('Lock N Load', 'Blow Ya Mind - DJ Daddy Trance Remix', 300);
     expect(matchDoubts(file('x/Lock N Load - Blow Ya Mind.flac'), remix)).toEqual(['Manque « dj daddy trance remix »']);
     const live = song('Mac Declos', 'Sexiness (Live at Fabric)', 300);
