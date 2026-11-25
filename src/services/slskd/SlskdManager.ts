@@ -65,6 +65,8 @@ function killTree(pid: number): Promise<void> {
 export class SlskdManager {
   private state: State = "stopped";
   private child: ChildProcess | null = null;
+  /** When the running slskd was started (0: none), to tell the downloads it stopped from older ones */
+  startedAt = 0;
   private client: SlskdAPI | null = null;
   private startPromise: Promise<SlskdAPI> | null = null;
   private stopPromise: Promise<void> | null = null;
@@ -306,6 +308,7 @@ export class SlskdManager {
       },
     });
     this.child = child;
+    this.startedAt = Date.now();
     if (child.pid) fs.writeFileSync(this.pidPath, String(child.pid), "utf8");
 
     const onOutput = (data: Buffer) => {

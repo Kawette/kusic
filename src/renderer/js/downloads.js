@@ -269,7 +269,8 @@ export function render() {
     const actions = isDownloads && [
       failedRow && `<button class="dl-action-btn dl-retry" title="Réessayer avec la même source" data-action="retry">${icon(ICONS.retry)}</button>`,
       (failedRow || isRemotelyQueued(t)) && t.trackId && `<button class="dl-action-btn dl-other" title="Choisir une autre source" data-action="other">${icon(ICONS.search)}</button>`,
-      running && `<button class="dl-action-btn dl-cancel" title="Annuler" data-action="cancel">${icon(ICONS.close)}</button>`,
+      // Resuming: already ended in slskd, only its row is left to remove
+      running && `<button class="dl-action-btn dl-cancel" title="Annuler" data-action="${/resuming/i.test(t.state) ? 'remove' : 'cancel'}">${icon(ICONS.close)}</button>`,
       // Finished rows (failed or done) leave the list one by one too, once filed
       !running && !t.placing && `<button class="dl-action-btn dl-cancel" title="Retirer de la liste" data-action="remove">${icon(ICONS.close)}</button>`,
     ].filter(Boolean).join('');

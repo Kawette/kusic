@@ -51,6 +51,7 @@ const downloads = new DownloadTracker(
   () => slskd.downloadsDir,
   (transfers) => send("downloads-updated", transfers),
   (event) => send("download-event", event),
+  () => slskd.startedAt,
 );
 
 slskd.onBinaryProgress = (progress) => send("slskd-download-progress", progress);

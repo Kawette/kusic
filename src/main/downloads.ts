@@ -114,6 +114,8 @@ export class DownloadTracker {
     private downloadsDir: () => string,
     private onUpdate: (transfers: Transfer[]) => void,
     private onEvent: (event: DownloadEvent) => void,
+    /** When the running slskd was started */
+    private slskdStartedAt: () => number,
   ) {}
 
   start(): void {
@@ -220,7 +222,7 @@ export class DownloadTracker {
     const raw = flattenTransfers((await api.getDownloads()) as RawDownloads[]);
     // Stopped while the request was in flight: drop the stale list
     if (generation !== this.generation) return [];
-    const resuming = await this.isResuming(api, raw);
+    const resuming = await this.isResuming(api, raw.filter((t) => this.stoppedByThisStart(t)));
     if (generation !== this.generation) return [];
     const transfers: Transfer[] = raw.map((r) => {
       const { endedAt: _endedAt, exception: _exception, ...t } = r;
@@ -228,7 +230,8 @@ export class DownloadTracker {
       const askedAt = queued ? this.positionAskedAt.get(t.id) : undefined;
       return {
         ...t,
-        ...(isInterrupted(r) && (resuming ? { state: "Resuming" } : { interrupted: true })),
+        ...(isInterrupted(r) &&
+          (resuming && this.stoppedByThisStart(r) ? { state: "Resuming" } : { interrupted: true })),
         // Downloaded but not filed yet: removing it from slskd's list would lose it
         ...(this.isPlacing(t) && { placing: true }),
         trackId: this.pending[keyOf(t.username, t.filename)]?.trackId,
@@ -247,9 +250,21 @@ export class DownloadTracker {
   }
 
   /** Whether downloads interrupted by closing slskd may still be requested again by it. */
+  /**
+   * Interrupted when this slskd started (it marks the downloads running at its
+   * last close as such right after starting): the only ones it requests again.
+   * Older ones, which it could not request then, stay interrupted.
+   */
+  private stoppedByThisStart(t: TrackedTransfer): boolean {
+    const startedAt = this.slskdStartedAt();
+    return isInterrupted(t) && !!startedAt && !!t.endedAt && parseUtc(t.endedAt) >= startedAt;
+  }
+
+  /** `transfers`: those interrupted by this start. */
   private async isResuming(api: SlskdAPI, transfers: TrackedTransfer[]): Promise<boolean> {
     const now = Date.now();
-    if (!this.loggedInAt && now - this.loginCheckedAt >= LOGIN_CHECK_INTERVAL && transfers.some(isInterrupted)) {
+    if (!transfers.length) return false;
+    if (!this.loggedInAt && now - this.loginCheckedAt >= LOGIN_CHECK_INTERVAL) {
       this.loginCheckedAt = now;
       const { state = "" } = await api.getServerState().catch(() => ({ state: "" }));
       if (state.includes("LoggedIn")) this.loggedInAt = Date.now();
