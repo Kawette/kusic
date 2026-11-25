@@ -196,7 +196,7 @@ export function matchDoubts(result, track, certainty = certaintyOf(track)) {
 
   if (!isCertainFormat(result)) {
     const ext = (result.extension || '?').toUpperCase();
-    doubts.push(result.extension === 'mp3' ? `${ext} ${result.bitRate || '?'} kbps` : ext);
+    doubts.push(ext === 'MP3' ? `${ext} ${result.bitRate || '?'} kbps` : ext);
   }
   return doubts;
 }
