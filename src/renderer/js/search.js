@@ -605,9 +605,10 @@ function startRun(kind, tracks, autoDownload) {
   renderAutoState();
   const missing = Math.min(AUTO_SEARCH_CONCURRENCY - workerCount, waiting.search.length + waiting.upgrade.length);
   for (let i = 0; i < missing; i++) {
-    workerCount++;
-    autoWorker(i * AUTO_SEARCH_DELAY).catch(toastError).finally(() => workerCount--);
+    // Spaced after the busy workers too: searches never start together
+    autoWorker((workerCount + i) * AUTO_SEARCH_DELAY).catch(toastError);
   }
+  workerCount += missing;
 }
 
 /** Stop a run: its waiting tracks are dropped, its running searches end in the cache. */
@@ -620,6 +621,7 @@ function stopRun(kind, message, type = 'info') {
 
 /** Soulseek lost: every run stops and the searches are cancelled (except the validation's). */
 function stopAllRuns(message) {
+  if (!runs.search && !runs.upgrade) return; // Already stopped by another worker
   for (const kind of Object.keys(runs)) stopRun(kind);
   for (const session of autoSessions) {
     if (shown?.session !== session && prefetched !== session) cancelSession(session);
@@ -649,10 +651,10 @@ export async function toggleAutoSearch(tracks) {
     for (const { track, key } of missingTracks(tracks)) {
       if (sessions.has(key)) continue;
       const cached = cacheSummary.get(key);
-      const waiting = !hasTransferForTrack(track.id);
+      const noTransfer = !hasTransferForTrack(track.id);
       // Stale relevant results are searched again to be validated; otherwise cached
       // tracks only to look for a certain match (older entries have no certain count)
-      if (!cached || (waiting && (
+      if (!cached || (noTransfer && (
         (cached.relevant > 0 && !isFresh(cached))
         || (autoDownload && (cached.certain ?? cached.relevant) > 0)))) {
         queue.push(track);
@@ -713,10 +715,15 @@ export async function toggleAutoUpgrade(tracks) {
 
 /** Take the waiting tracks one by one (missing ones first), pausing after each search. */
 async function autoWorker(initialDelay) {
-  await sleep(initialDelay);
-  for (let item = nextWaiting(); item; item = nextWaiting()) {
-    const searched = await processWaiting(item);
-    if (searched && (waiting.search.length || waiting.upgrade.length)) await sleep(AUTO_SEARCH_DELAY);
+  try {
+    await sleep(initialDelay);
+    for (let item = nextWaiting(); item; item = nextWaiting()) {
+      const searched = await processWaiting(item);
+      if (searched && (waiting.search.length || waiting.upgrade.length)) await sleep(AUTO_SEARCH_DELAY);
+    }
+  } finally {
+    // At once, not a microtask later: a run starting meanwhile sees the free slot
+    workerCount--;
   }
 }
 
@@ -745,7 +752,11 @@ async function processWaiting({ run, track }) {
     // Recent results (or searched meanwhile, in the modal…): no new search
     results = (await api.searchCache.get(trackQuery(track)).catch(() => null))?.results;
   }
-  if (run.autoDownload && results && current()) await downloadCertainMatch(run, track, results);
+  if (run.autoDownload && results && current()) {
+    // A failure for one track leaves it to choose by hand: the run goes on
+    await downloadCertainMatch(run, track, results)
+      .catch((err) => console.warn('[Kusic] Auto-download failed:', errorMessage(err)));
+  }
   if (!current()) return stale;
   run.done++;
   renderAutoState();
