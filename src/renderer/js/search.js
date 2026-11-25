@@ -303,9 +303,12 @@ function renderResults(searching) {
   relevantCount = relevant.length;
   // Why each relevant result is not certain; the certain ones in the automatic download's order
   const doubts = new Map(relevant.map((r) => [r, matchDoubts(r, shown.track, certainty)]));
-  const certain = relevant.filter((r) => doubts.get(r).length === 0).sort(sourceOrder(activeDownloadsWith));
+  // Sources whose download already failed come last and are never the automatic choice
+  const failedBefore = (r) => !!failedDownloadLabel(r.username, r.filename);
+  const certain = relevant.filter((r) => doubts.get(r).length === 0).sort(sourceOrder(activeDownloadsWith))
+    .sort((a, b) => Number(failedBefore(a)) - Number(failedBefore(b)));
   const rank = new Map(certain.map((r, i) => [r, i]));
-  const best = certain[0];
+  const best = certain.find((r) => !failedBefore(r));
   if (queue) {
     queueHint.textContent = best
       ? 'Correspondance certaine : c\'est le fichier que le mode auto télécharge'
