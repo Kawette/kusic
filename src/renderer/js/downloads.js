@@ -113,6 +113,12 @@ export function pendingDownloadFor(username, filename) {
   return transfers.some((t) => t.username === username && t.filename === filename && !isFailed(t.state));
 }
 
+/** Why the download of this file failed ("Expiré", "Refusé"…), or '' if it did not. */
+export function failedDownloadLabel(username, filename) {
+  const failed = transfers.find((t) => t.username === username && t.filename === filename && isFailed(t.state));
+  return failed ? stateDisplay(failed).label : '';
+}
+
 /** True if a download of this playlist track is listed (running, failed or finished). */
 export function hasTransferForTrack(trackId) {
   return withTransfer.has(trackId);
@@ -124,6 +130,12 @@ export function hasTransferForTrack(trackId) {
  * (the next choice of user), until the pushed list has it.
  */
 export async function requestDownload(username, filename, size, trackId) {
+  // A new source replaces the failed downloads of the track. The same file
+  // must leave slskd's list before being asked again (as a retry does).
+  const failed = trackId ? transfers.filter((t) => t.trackId === trackId && isFailed(t.state)) : [];
+  const sameFile = failed.filter((t) => t.username === username && t.filename === filename);
+  for (const t of sameFile) await api.slskd.cancelDownload(t.username, t.id, t.filename, true);
+
   const reserved = trackId && !withTransfer.has(trackId);
   activeByUser.set(username, activeDownloadsWith(username) + 1);
   if (reserved) withTransfer.add(trackId);
@@ -134,6 +146,10 @@ export async function requestDownload(username, filename, size, trackId) {
     if (reserved) withTransfer.delete(trackId);
     throw err;
   }
+
+  const others = failed.filter((t) => !sameFile.includes(t));
+  await Promise.all(others.map((t) => api.slskd.cancelDownload(t.username, t.id, t.filename, true)))
+    .catch((err) => console.warn('[Downloads] Could not remove a failed download:', err));
 }
 
 /** Our downloads from this user that are not finished (waiting or running). */

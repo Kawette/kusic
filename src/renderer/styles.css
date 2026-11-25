@@ -1188,6 +1188,17 @@ a:hover {
   background: rgba(46, 204, 113, 0.06);
 }
 
+/* A file whose download already failed (wins over the best-match look) */
+.match-tag.failed {
+  background: rgba(231, 76, 60, 0.15);
+  color: var(--danger);
+}
+
+.slskd-result-row.failed-source {
+  box-shadow: inset 3px 0 0 var(--danger);
+  background: rgba(231, 76, 60, 0.06);
+}
+
 /* Validation: position in the chain and what to do */
 .slskd-queue {
   display: flex;

@@ -10,7 +10,8 @@ import {
   openModal, showToast, sourceBadge, SPINNER, thumb, toastError, userLabel,
 } from './ui.js';
 import {
-  activeDownloadsWith, hasTransferForTrack, pendingDownloadFor, refreshDownloads, requestDownload,
+  activeDownloadsWith, failedDownloadLabel, hasTransferForTrack, pendingDownloadFor, refreshDownloads,
+  requestDownload,
 } from './downloads.js';
 import {
   certainMatches, certaintyOf, fallbackQuery, isRelevant, matchDoubts, searchStats, sourceOrder,
@@ -334,6 +335,8 @@ function renderResults(searching) {
       .filter(Boolean).join(' · ') || '—';
     const duration = durationMatch(r.length && r.length * 1000, target);
     const started = pendingDownloadFor(r.username, r.filename);
+    // Already tried and failed: still downloadable (same source again), but flagged
+    const failed = !started && failedDownloadLabel(r.username, r.filename);
     // Unknown (no dot) in older cached results
     const slot = r.hasFreeUploadSlot == null ? '' : r.hasFreeUploadSlot ? 'free' : 'busy';
     const userInfo = [
@@ -342,8 +345,12 @@ function renderResults(searching) {
     ].filter(Boolean).join('\n');
 
     const off = !doubts.has(r);
-    const tags = matchTags(doubts.get(r), r === best);
-    return `<div class="slskd-result-row${off ? ' off-topic' : ''}${r === best ? ' best-match' : ''}" ${off ? 'title="Le nom du fichier ne contient pas le titre"' : ''}>
+    const failedTag = failed
+      ? `<span class="match-tag failed" title="Le téléchargement de ce fichier a échoué. Le relancer remplace l'échec dans les téléchargements">Échec : ${escapeHtml(failed.toLowerCase())}</span>`
+      : '';
+    const tags = failedTag + matchTags(doubts.get(r), r === best);
+    const rowClass = [off && 'off-topic', r === best && 'best-match', failed && 'failed-source'].filter(Boolean).join(' ');
+    return `<div class="slskd-result-row ${rowClass}" ${off ? 'title="Le nom du fichier ne contient pas le titre"' : ''}>
       <div class="result-file">
         <span class="result-filename" title="${escapeHtml(r.filename)}">${escapeHtml(name)}</span>
         ${tags ? `<span class="result-tags">${tags}</span>` : ''}
@@ -353,7 +360,7 @@ function renderResults(searching) {
       <span class="result-quality">${escapeHtml(quality)}</span>
       <span class="result-duration ${duration.cls}" title="${duration.title}">${r.length ? formatDuration(r.length * 1000) : '—'}</span>
       <span class="result-size">${formatSize(r.size)}</span>
-      <button class="result-download-btn${started ? ' done' : ''}" data-index="${i}" ${started ? 'disabled title="Téléchargement lancé"' : 'title="Télécharger"'}>
+      <button class="result-download-btn${started ? ' done' : ''}" data-index="${i}" ${started ? 'disabled title="Téléchargement lancé"' : `title="${failed ? 'Réessayer ce fichier' : 'Télécharger'}"`}>
         ${icon(started ? ICONS.check : ICONS.download)}
       </button>
     </div>`;
