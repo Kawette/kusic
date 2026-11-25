@@ -541,29 +541,68 @@ queryInput.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') submitQuery(false);
 });
 
-// ─── Auto-search ────────────────────────────────────────────
-// Results are cached for the user to choose from. Only with the opt-in
-// "autoDownload" setting, a track whose results hold a certain match
+// ─── Auto-search and auto-upgrade ───────────────────────────
+// Auto-search: results are cached for the user to choose from. Only with the
+// opt-in "autoDownload" setting, a track whose results hold a certain match
 // (see certainMatches) is downloaded without a click.
-const autoBtn = $('#btn-auto-search');
-const autoText = $('#auto-search-text');
-const autoStatus = $('#auto-search-status');
-let auto = null; // { queue, total, done, sessions, autoDownload, downloaded }
+// Auto-upgrade (asked with its own button): tracks whose file is lossy get
+// their certain FLAC/WAV match downloaded; the two files then meet as a
+// conflict, where the user picks the one to keep.
+const AUTO_KINDS = {
+  search: {
+    btn: $('#btn-auto-search'), text: $('#auto-search-text'), status: $('#auto-search-status'),
+    label: 'Recherche auto', name: 'Recherche',
+  },
+  upgrade: {
+    btn: $('#btn-auto-upgrade'), text: $('#auto-upgrade-text'), status: $('#auto-upgrade-status'),
+    label: 'Amélioration auto', name: 'Amélioration',
+  },
+};
+let auto = null; // { kind, queue, total, done, sessions, autoDownload, downloaded }
 let autoStarting = false;
 
 function renderAutoState() {
-  autoBtn.classList.toggle('active', !!auto);
-  autoText.textContent = auto ? 'Arrêter' : 'Recherche auto';
-  autoStatus.textContent = auto ? `${auto.done}/${auto.total}` : '';
+  for (const [kind, { btn, text, status, label }] of Object.entries(AUTO_KINDS)) {
+    const running = auto?.kind === kind;
+    btn.classList.toggle('active', running);
+    text.textContent = running ? 'Arrêter' : label;
+    status.textContent = running ? `${auto.done}/${auto.total}` : '';
+  }
+}
+
+/**
+ * Stop the run of this kind, or tell that the other kind runs (one run at a
+ * time: they share the searches). True when the caller must not start one.
+ */
+function stopOrBusy(kind) {
+  if (!auto && !autoStarting) return false;
+  if (auto?.kind === kind) {
+    stopAutoSearch(`${AUTO_KINDS[kind].name} arrêtée (${auto.done}/${auto.total})`);
+  } else if (auto) {
+    showToast(`${AUTO_KINDS[auto.kind].name} auto en cours : arrêtez-la d'abord`, 'info');
+  }
+  return true;
+}
+
+/** Start the workers of a run; ends with a summary toast. */
+function startRun(run) {
+  auto = run;
+  renderAutoState();
+  const workers = Array.from({ length: Math.min(AUTO_SEARCH_CONCURRENCY, run.queue.length) },
+    (_, i) => autoWorker(run, i * AUTO_SEARCH_DELAY));
+  Promise.all(workers)
+    .then(() => {
+      if (auto !== run) return;
+      const n = run.downloaded;
+      const downloads = run.autoDownload ? `, ${n} téléchargement${n > 1 ? 's' : ''} lancé${n > 1 ? 's' : ''}` : '';
+      stopAutoSearch(`${AUTO_KINDS[run.kind].name} terminée (${run.done} pistes${downloads})`, 'success');
+    })
+    .catch(toastError);
 }
 
 /** `tracks`: the tracks currently displayed. */
 export async function toggleAutoSearch(tracks) {
-  if (auto) {
-    stopAutoSearch(`Recherche arrêtée (${auto.done}/${auto.total})`);
-    return;
-  }
-  if (autoStarting) return;
+  if (stopOrBusy('search')) return;
   autoStarting = true;
   try {
     if (!(await ensureConnected())) return;
@@ -590,19 +629,41 @@ export async function toggleAutoSearch(tracks) {
       return;
     }
 
-    const run = { queue, total: queue.length, done: 0, sessions: new Set(), autoDownload, downloaded: 0 };
-    auto = run;
-    renderAutoState();
-    const workers = Array.from({ length: Math.min(AUTO_SEARCH_CONCURRENCY, queue.length) },
-      (_, i) => autoWorker(run, i * AUTO_SEARCH_DELAY));
-    Promise.all(workers)
-      .then(() => {
-        if (auto !== run) return;
-        const n = run.downloaded;
-        const downloads = run.autoDownload ? `, ${n} téléchargement${n > 1 ? 's' : ''} lancé${n > 1 ? 's' : ''}` : '';
-        stopAutoSearch(`Recherche terminée (${run.done} pistes${downloads})`, 'success');
-      })
-      .catch(toastError);
+    startRun({ kind: 'search', queue, total: queue.length, done: 0, sessions: new Set(), autoDownload, downloaded: 0 });
+  } catch (err) {
+    toastError(err);
+  } finally {
+    autoStarting = false;
+  }
+}
+
+/** Displayed tracks with a lossy file (MP3…), one per query, not being downloaded or in conflict. */
+function upgradableTracks(tracks) {
+  const keys = new Set();
+  return tracks.filter((track) => {
+    if (!track.format || isLossless(track.format) || !track.playlistIds) return false;
+    if (track.conflictId || hasTransferForTrack(track.id)) return false;
+    const key = trackKey(track);
+    if (keys.has(key) || sessions.has(key)) return false;
+    keys.add(key);
+    return true;
+  });
+}
+
+/** `tracks`: the tracks currently displayed. */
+export async function toggleAutoUpgrade(tracks) {
+  if (stopOrBusy('upgrade')) return;
+  autoStarting = true;
+  try {
+    if (!(await ensureConnected())) return;
+    await Promise.all([loadCacheSummary(), refreshDownloads()]);
+    const queue = upgradableTracks(tracks);
+    if (queue.length === 0) {
+      showToast('Aucune piste affichée à améliorer (toutes en FLAC/WAV, ou déjà en téléchargement)', 'success');
+      return;
+    }
+    // Asked with this button: downloads whatever the autoDownload setting
+    startRun({ kind: 'upgrade', queue, total: queue.length, done: 0, sessions: new Set(), autoDownload: true, downloaded: 0 });
   } catch (err) {
     toastError(err);
   } finally {
@@ -626,7 +687,7 @@ async function autoWorker(run, initialDelay) {
       if (session.error && auto === run) {
         const status = await api.slskd.getStatus().catch(() => ({}));
         if (!status.connected) {
-          stopAutoSearch('Soulseek est déconnecté : recherche auto arrêtée', 'error');
+          stopAutoSearch(`Soulseek est déconnecté : ${AUTO_KINDS[run.kind].name.toLowerCase()} auto arrêtée`, 'error');
           return;
         }
       }
@@ -643,17 +704,22 @@ async function autoWorker(run, initialDelay) {
   }
 }
 
-/** Download the track from its best certain source, if any; otherwise it stays a manual choice. */
+/**
+ * Download the track from its best certain source (lossless only for an
+ * upgrade), if any; otherwise it stays a manual choice.
+ */
 async function downloadCertainMatch(run, track, results) {
   if (hasTransferForTrack(track.id)) return;
   // One file per user: when a user is unreachable, their other files would fail too
   const matches = [];
   for (const match of certainMatches(results, track, activeDownloadsWith)) {
     if (matches.length === AUTO_DOWNLOAD_TRIES) break;
+    if (run.kind === 'upgrade' && !isLossless(match.extension)) continue;
     if (!matches.some((m) => m.username === match.username)) matches.push(match);
   }
-  // Unticked during the run: no more automatic downloads
-  if (!matches.length || !(await api.getSettings()).autoDownload) return;
+  if (!matches.length) return;
+  // Unticked during an auto-search: no more automatic downloads
+  if (run.kind === 'search' && !(await api.getSettings()).autoDownload) return;
   for (const match of matches) {
     // Stopped, or downloaded by hand while the settings were read
     if (auto !== run || hasTransferForTrack(track.id)) return;

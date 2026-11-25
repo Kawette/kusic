@@ -6,7 +6,7 @@ import {
   withBusyButton,
 } from './ui.js';
 import {
-  cachedStats, isSearching, openSearch, openValidation, toggleAutoSearch, validationQueue,
+  cachedStats, isSearching, openSearch, openValidation, toggleAutoSearch, toggleAutoUpgrade, validationQueue,
 } from './search.js';
 import { isFinished, isTransferring, queueWait, transferForTrack, waitingLabel } from './downloads.js';
 import { openIdentify } from './identify.js';
@@ -329,6 +329,7 @@ filterPlaylist.addEventListener('change', () => {
 });
 
 $('#btn-auto-search').addEventListener('click', () => toggleAutoSearch(tracks));
+$('#btn-auto-upgrade').addEventListener('click', () => toggleAutoUpgrade(tracks));
 $('#btn-validate').addEventListener('click', () => openValidation(tracks).catch(toastError));
 
 /** Fetch every playlist again from Spotify / SoundCloud. */
