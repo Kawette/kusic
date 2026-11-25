@@ -19,6 +19,12 @@ const MAX_ATTEMPTS = 10;
 const STALE_AFTER = 7 * 24 * 60 * 60 * 1000;
 /** How often to ask a remote user for our place in their queue and their presence */
 const REMOTE_QUEUE_INTERVAL = 60_000;
+/**
+ * slskd marks the downloads running when it closes as errored, then, a few
+ * seconds after it starts again, requests them anew (new transfers replacing
+ * the old ones). Meanwhile they are shown as resuming, not failed.
+ */
+const RESUME_GRACE = 60_000;
 
 export type DownloadEvent =
   | { type: "placed"; trackId: string; filePath: string }
@@ -39,6 +45,7 @@ export function isSucceeded(state: string): boolean {
 
 interface RawFile extends Partial<Transfer> {
   endedAt?: string;
+  exception?: string;
 }
 
 export interface RawDownloads {
@@ -46,7 +53,7 @@ export interface RawDownloads {
   directories?: { files?: RawFile[] }[];
 }
 
-type TrackedTransfer = Transfer & { endedAt?: string };
+type TrackedTransfer = Transfer & { endedAt?: string; exception?: string };
 
 export function flattenTransfers(users: RawDownloads[]): TrackedTransfer[] {
   return users.flatMap((user) =>
@@ -62,6 +69,7 @@ export function flattenTransfers(users: RawDownloads[]): TrackedTransfer[] {
         averageSpeed: file.averageSpeed || 0,
         placeInQueue: file.placeInQueue || 0,
         endedAt: file.endedAt,
+        exception: file.exception,
       })),
     ),
   );
@@ -69,11 +77,18 @@ export function flattenTransfers(users: RawDownloads[]): TrackedTransfer[] {
 
 const isRemotelyQueued = (t: Transfer) => /queued/i.test(t.state) && /remotely/i.test(t.state);
 
+/** Stopped because slskd closed (not a failure of the transfer itself). */
+export function isInterrupted(t: { state: string; exception?: string }): boolean {
+  return /errored/i.test(t.state) && /application shut ?down/i.test(t.exception || "");
+}
+
 
 export class DownloadTracker {
   private timer: NodeJS.Timeout | null = null;
   private running = false;
   private generation = 0;
+  /** When slskd was last started, for the downloads it resumes */
+  private startedAt = 0;
   private polling: Promise<Transfer[]> | null = null;
   private lastPushed = "";
   /** Transfer id -> when its queue position was last requested */
@@ -97,6 +112,7 @@ export class DownloadTracker {
   start(): void {
     if (this.running) return;
     this.running = true;
+    this.startedAt = Date.now();
     const generation = ++this.generation;
     const loop = async () => {
       await this.refresh().catch((err) => console.error("[Downloads] Poll failed:", err));
@@ -172,8 +188,11 @@ export class DownloadTracker {
     const raw = flattenTransfers((await api.getDownloads()) as RawDownloads[]);
     // Stopped while the request was in flight: drop the stale list
     if (generation !== this.generation) return [];
-    const transfers: Transfer[] = raw.map(({ endedAt: _endedAt, ...t }) => ({
+    const resuming = Date.now() - this.startedAt < RESUME_GRACE;
+    const transfers: Transfer[] = raw.map(({ endedAt: _endedAt, exception: _exception, ...t }) => ({
       ...t,
+      ...(isInterrupted({ state: t.state, exception: _exception }) &&
+        (resuming ? { state: "Resuming" } : { interrupted: true })),
       trackId: this.pending[keyOf(t.username, t.filename)]?.trackId,
       userPresence: isRemotelyQueued(t) ? this.presence.get(t.username)?.value : undefined,
       queueEstimate: isRemotelyQueued(t) ? this.queueStats.get(t.id)?.estimate : undefined,

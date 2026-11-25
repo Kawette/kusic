@@ -37,6 +37,8 @@ const isRemotelyQueued = (t) => /queued/i.test(t.state) && /remotely/i.test(t.st
 export function waitingLabel(t) {
   if (isRemotelyQueued(t)) return t.placeInQueue > 0 ? `En file (${t.placeInQueue}ᵉ)` : 'En file';
   if (/requested/i.test(t.state)) return 'Demandé';
+  // Stopped when slskd closed: it requests it again a few seconds after starting
+  if (/resuming/i.test(t.state)) return 'Reprise…';
   return 'En attente';
 }
 
@@ -101,6 +103,7 @@ function stateDisplay(t) {
   if (s.includes('cancelled')) return { label: 'Annulé', cls: 'state-error' };
   if (s.includes('timedout')) return { label: 'Expiré', cls: 'state-error' };
   if (s.includes('rejected')) return { label: 'Refusé', cls: 'state-error' };
+  if (t.interrupted) return { label: 'Interrompu', cls: 'state-error' };
   if (s.includes('completed')) return { label: 'Erreur', cls: 'state-error' };
   if (isTransferring(t)) return { label: 'En cours', cls: 'state-active' };
   // The place is shown in the progress column, with the queue speed

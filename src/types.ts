@@ -152,5 +152,7 @@ export interface Transfer {
   queueEstimate?: { rate: number; eta?: number };
   /** Last check of the queue position and how often it is checked (ms) */
   queueCheck?: { at: number; every: number };
+  /** Stopped when slskd closed and not requested again since (user offline…) */
+  interrupted?: boolean;
   trackId?: string;
 }
