@@ -162,5 +162,7 @@ export interface Transfer {
   queueCheck?: { at: number; every: number };
   /** Stopped when slskd closed and not requested again since (user offline…) */
   interrupted?: boolean;
+  /** Downloaded, waiting to be tagged and placed in the library */
+  placing?: boolean;
   trackId?: string;
 }

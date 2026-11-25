@@ -259,8 +259,8 @@ export function render() {
       failedRow && `<button class="dl-action-btn dl-retry" title="Réessayer avec la même source" data-action="retry">${icon(ICONS.retry)}</button>`,
       (failedRow || isRemotelyQueued(t)) && t.trackId && `<button class="dl-action-btn dl-other" title="Choisir une autre source" data-action="other">${icon(ICONS.search)}</button>`,
       running && `<button class="dl-action-btn dl-cancel" title="Annuler" data-action="cancel">${icon(ICONS.close)}</button>`,
-      // Finished rows (failed or done) leave the list one by one too
-      !running && `<button class="dl-action-btn dl-cancel" title="Retirer de la liste" data-action="remove">${icon(ICONS.close)}</button>`,
+      // Finished rows (failed or done) leave the list one by one too, once filed
+      !running && !t.placing && `<button class="dl-action-btn dl-cancel" title="Retirer de la liste" data-action="remove">${icon(ICONS.close)}</button>`,
     ].filter(Boolean).join('');
 
     return `<div class="dl-row" data-index="${i}">

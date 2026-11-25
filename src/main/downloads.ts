@@ -217,6 +217,8 @@ export class DownloadTracker {
       return {
         ...t,
         ...(isInterrupted(r) && (resuming ? { state: "Resuming" } : { interrupted: true })),
+        // Downloaded but not filed yet: removing it from slskd's list would lose it
+        ...(isSucceeded(t.state) && this.isPending(t.username, t.filename) && { placing: true }),
         trackId: this.pending[keyOf(t.username, t.filename)]?.trackId,
         userPresence: queued ? this.presence.get(t.username)?.value : undefined,
         queueEstimate: queued ? this.queueStats.get(t.id)?.estimate : undefined,
