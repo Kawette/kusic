@@ -508,7 +508,7 @@ function cancelPrefetch() {
   const session = prefetched;
   prefetched = null;
   // Kept when now shown (it was the next track) or awaited by the auto-search
-  if (session && !session.complete && shown?.session !== session && !auto?.sessions.has(session)) {
+  if (session && !session.complete && shown?.session !== session && !autoSessions.has(session)) {
     cancelSession(session);
   }
 }
@@ -566,6 +566,9 @@ queryInput.addEventListener('keydown', (e) => {
 // those with lossless results join the validation, and with "autoDownload"
 // their certain FLAC/WAV match is downloaded. The two files then meet as a
 // conflict, where the user picks the one to keep.
+// Both can run at once: their tracks wait in one shared queue served by the
+// same few workers (the load on Soulseek stays that of one run), the tracks
+// without a file first.
 const AUTO_KINDS = {
   search: {
     btn: $('#btn-auto-search'), text: $('#auto-search-text'), status: $('#auto-search-status'),
@@ -576,52 +579,65 @@ const AUTO_KINDS = {
     label: 'Amélioration auto', name: 'Amélioration',
   },
 };
-let auto = null; // { kind, queue, total, done, sessions, autoDownload, downloaded }
-let autoStarting = false;
+/** The run of each kind: { kind, total, done, autoDownload, downloaded } */
+const runs = { search: null, upgrade: null };
+const starting = { search: false, upgrade: false };
+/** Tracks waiting for a worker, per kind ({ run, track }): "search" ones go first */
+const waiting = { search: [], upgrade: [] };
+/** Searches running for the workers (kept when the validation drops its prefetch) */
+const autoSessions = new Set();
+let workerCount = 0;
 
 function renderAutoState() {
   for (const [kind, { btn, text, status, label }] of Object.entries(AUTO_KINDS)) {
-    const running = auto?.kind === kind;
-    btn.classList.toggle('active', running);
-    text.textContent = running ? 'Arrêter' : label;
-    status.textContent = running ? `${auto.done}/${auto.total}` : '';
+    const run = runs[kind];
+    btn.classList.toggle('active', !!run);
+    text.textContent = run ? 'Arrêter' : label;
+    status.textContent = run ? `${run.done}/${run.total}` : '';
   }
 }
 
-/**
- * Stop the run of this kind, or tell that the other kind runs (one run at a
- * time: they share the searches). True when the caller must not start one.
- */
-function stopOrBusy(kind) {
-  if (!auto && !autoStarting) return false;
-  if (auto?.kind === kind) {
-    stopAutoSearch(`${AUTO_KINDS[kind].name} arrêtée (${auto.done}/${auto.total})`);
-  } else if (auto) {
-    showToast(`${AUTO_KINDS[auto.kind].name} auto en cours : arrêtez-la d'abord`, 'info');
-  }
-  return true;
-}
-
-/** Start the workers of a run; ends with a summary toast. */
-function startRun(run) {
-  auto = run;
+/** Queue the tracks of a new run, and start the workers still missing. */
+function startRun(kind, tracks, autoDownload) {
+  const run = { kind, total: tracks.length, done: 0, autoDownload, downloaded: 0 };
+  runs[kind] = run;
+  waiting[kind] = tracks.map((track) => ({ run, track }));
   renderAutoState();
-  const workers = Array.from({ length: Math.min(AUTO_SEARCH_CONCURRENCY, run.queue.length) },
-    (_, i) => autoWorker(run, i * AUTO_SEARCH_DELAY));
-  Promise.all(workers)
-    .then(() => {
-      if (auto !== run) return;
-      const n = run.downloaded;
-      const downloads = run.autoDownload ? `, ${n} téléchargement${n > 1 ? 's' : ''} lancé${n > 1 ? 's' : ''}` : '';
-      stopAutoSearch(`${AUTO_KINDS[run.kind].name} terminée (${run.done} pistes${downloads})`, 'success');
-    })
-    .catch(toastError);
+  const missing = Math.min(AUTO_SEARCH_CONCURRENCY - workerCount, waiting.search.length + waiting.upgrade.length);
+  for (let i = 0; i < missing; i++) {
+    workerCount++;
+    autoWorker(i * AUTO_SEARCH_DELAY).catch(toastError).finally(() => workerCount--);
+  }
+}
+
+/** Stop a run: its waiting tracks are dropped, its running searches end in the cache. */
+function stopRun(kind, message, type = 'info') {
+  runs[kind] = null;
+  waiting[kind] = [];
+  renderAutoState();
+  if (message) showToast(message, type);
+}
+
+/** Soulseek lost: every run stops and the searches are cancelled (except the validation's). */
+function stopAllRuns(message) {
+  for (const kind of Object.keys(runs)) stopRun(kind);
+  for (const session of autoSessions) {
+    if (shown?.session !== session && prefetched !== session) cancelSession(session);
+  }
+  showToast(message, 'error');
+}
+
+/** Stop the running run of this kind; true when there was one (or one is starting). */
+function stopIfRunning(kind) {
+  const run = runs[kind];
+  if (run) stopRun(kind, `${AUTO_KINDS[kind].name} arrêtée (${run.done}/${run.total})`);
+  return !!run || starting[kind];
 }
 
 /** `tracks`: the tracks currently displayed. */
 export async function toggleAutoSearch(tracks) {
-  if (stopOrBusy('search')) return;
-  autoStarting = true;
+  if (stopIfRunning('search')) return;
+  starting.search = true;
   try {
     if (!(await ensureConnected())) return;
     const [{ autoDownload }] = await Promise.all([
@@ -647,11 +663,11 @@ export async function toggleAutoSearch(tracks) {
       return;
     }
 
-    startRun({ kind: 'search', queue, total: queue.length, done: 0, sessions: new Set(), autoDownload, downloaded: 0 });
+    startRun('search', queue, autoDownload);
   } catch (err) {
     toastError(err);
   } finally {
-    autoStarting = false;
+    starting.search = false;
   }
 }
 
@@ -670,8 +686,8 @@ function upgradableTracks(tracks) {
 
 /** `tracks`: the tracks currently displayed. */
 export async function toggleAutoUpgrade(tracks) {
-  if (stopOrBusy('upgrade')) return;
-  autoStarting = true;
+  if (stopIfRunning('upgrade')) return;
+  starting.upgrade = true;
   try {
     if (!(await ensureConnected())) return;
     const [{ autoDownload }] = await Promise.all([api.getSettings(), loadCacheSummary(), refreshDownloads()]);
@@ -687,45 +703,58 @@ export async function toggleAutoUpgrade(tracks) {
           : 'Pistes déjà cherchées récemment : aucune version sans perte trouvée', 'success');
       return;
     }
-    startRun({ kind: 'upgrade', queue, total: queue.length, done: 0, sessions: new Set(), autoDownload, downloaded: 0 });
+    startRun('upgrade', queue, autoDownload);
   } catch (err) {
     toastError(err);
   } finally {
-    autoStarting = false;
+    starting.upgrade = false;
   }
 }
 
-async function autoWorker(run, initialDelay) {
+/** Take the waiting tracks one by one (missing ones first), pausing after each search. */
+async function autoWorker(initialDelay) {
   await sleep(initialDelay);
-  while (auto === run && run.queue.length > 0) {
-    const track = run.queue.shift();
-    const query = trackQuery(track);
-    let results = null;
-    // Not cached, or stale: users may have gone offline (see FRESH_MS)
-    const stale = !isFresh(cacheSummary.get(trackKey(track)));
-    if (stale) {
-      const session = searchTrack(track);
-      run.sessions.add(session);
-      await session.promise;
-      run.sessions.delete(session);
-      if (session.error && auto === run) {
-        const status = await api.slskd.getStatus().catch(() => ({}));
-        if (!status.connected) {
-          stopAutoSearch(`Soulseek est déconnecté : ${AUTO_KINDS[run.kind].name.toLowerCase()} auto arrêtée`, 'error');
-          return;
-        }
-      }
-      if (!session.error && !session.cancelled) results = session.results;
-    } else if (run.autoDownload) {
-      // Recent results (or searched meanwhile, in the modal…): no new search
-      results = (await api.searchCache.get(query).catch(() => null))?.results;
-    }
-    if (run.autoDownload && results && auto === run) await downloadCertainMatch(run, track, results);
-    if (auto !== run) return;
-    run.done++;
-    renderAutoState();
-    if (stale && run.queue.length > 0) await sleep(AUTO_SEARCH_DELAY);
+  for (let item = nextWaiting(); item; item = nextWaiting()) {
+    const searched = await processWaiting(item);
+    if (searched && (waiting.search.length || waiting.upgrade.length)) await sleep(AUTO_SEARCH_DELAY);
   }
+}
+
+const nextWaiting = () => waiting.search.shift() || waiting.upgrade.shift();
+
+/** Search a track (or read its fresh results), then maybe download it. True if searched. */
+async function processWaiting({ run, track }) {
+  const current = () => runs[run.kind] === run;
+  let results = null;
+  // Not cached, or stale: users may have gone offline (see FRESH_MS)
+  const stale = !isFresh(cacheSummary.get(trackKey(track)));
+  if (stale) {
+    const session = searchTrack(track);
+    autoSessions.add(session);
+    await session.promise;
+    autoSessions.delete(session);
+    if (session.error && current()) {
+      const status = await api.slskd.getStatus().catch(() => ({}));
+      if (!status.connected) {
+        stopAllRuns('Soulseek est déconnecté : recherches auto arrêtées');
+        return true;
+      }
+    }
+    if (!session.error && !session.cancelled) results = session.results;
+  } else if (run.autoDownload) {
+    // Recent results (or searched meanwhile, in the modal…): no new search
+    results = (await api.searchCache.get(trackQuery(track)).catch(() => null))?.results;
+  }
+  if (run.autoDownload && results && current()) await downloadCertainMatch(run, track, results);
+  if (!current()) return stale;
+  run.done++;
+  renderAutoState();
+  if (run.done === run.total) {
+    const n = run.downloaded;
+    const downloads = run.autoDownload ? `, ${n} téléchargement${n > 1 ? 's' : ''} lancé${n > 1 ? 's' : ''}` : '';
+    stopRun(run.kind, `${AUTO_KINDS[run.kind].name} terminée (${run.done} pistes${downloads})`, 'success');
+  }
+  return stale;
 }
 
 /**
@@ -745,7 +774,7 @@ async function downloadCertainMatch(run, track, results) {
   if (!matches.length || !(await api.getSettings()).autoDownload) return;
   for (const match of matches) {
     // Stopped, or downloaded by hand while the settings were read
-    if (auto !== run || hasDownloadFor(track)) return;
+    if (runs[run.kind] !== run || hasDownloadFor(track)) return;
     try {
       await requestDownload(match.username, match.filename, match.size, track.id);
       run.downloaded++;
@@ -755,15 +784,4 @@ async function downloadCertainMatch(run, track, results) {
       console.warn('[Kusic] Auto-download failed:', errorMessage(err));
     }
   }
-}
-
-function stopAutoSearch(message, type = 'info') {
-  const run = auto;
-  auto = null;
-  // Cancel in-flight searches, except those of the validation (displayed, next track)
-  for (const session of run?.sessions || []) {
-    if (shown?.session !== session && prefetched !== session) cancelSession(session);
-  }
-  renderAutoState();
-  if (message) showToast(message, type);
 }
