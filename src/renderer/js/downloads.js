@@ -72,7 +72,8 @@ function queueSpeed(estimate) {
   const since = 'depuis la première vérification (30 dernières minutes au plus)';
   // Green when moving up the queue, red when others get ahead of us
   const trend = estimate.rate > 0 ? 'gaining' : estimate.rate < 0 ? 'losing' : '';
-  const rate = `<span class="dl-queue-rate ${trend}">${formatQueueRate(estimate.rate)}</span>`;
+  // Signed like the position shown: −2/min when it goes down (the rate counts places gained)
+  const rate = `<span class="dl-queue-rate ${trend}">${formatQueueRate(-estimate.rate)}</span>`;
   if (estimate.rate < 0) {
     return { text: rate, title: `Places perdues ${since} : des utilisateurs sont passés devant vous` };
   }

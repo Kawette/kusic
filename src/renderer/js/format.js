@@ -23,7 +23,10 @@ export function formatWait(ms) {
   return `~${Math.round(hours / 24)} j`;
 }
 
-/** Places gained (+) or lost (−) in a queue: per minute, or per hour when slower. */
+/**
+ * Change of a queue position, like the number shown: + = it goes up (we move
+ * back), − = it goes down (we move forward). Per minute, or per hour when slower.
+ */
 export function formatQueueRate(perMinute) {
   const sign = perMinute > 0 ? '+' : perMinute < 0 ? '−' : '';
   const n = (v) => Math.abs(v).toLocaleString('fr-FR', { maximumFractionDigits: 1 });

@@ -14,7 +14,7 @@ describe('formatWait', () => {
 });
 
 describe('formatQueueRate', () => {
-  it('uses places per hour when slower than one a minute', () => {
+  it('signs the change like the position, per hour when slower than one a minute', () => {
     expect(formatQueueRate(2.5)).toBe('+2,5/min');
     expect(formatQueueRate(1)).toBe('+1/min');
     expect(formatQueueRate(0.1)).toBe('+6/h');
