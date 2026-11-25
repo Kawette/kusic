@@ -301,6 +301,7 @@ ipcMain.handle(
     setCachedSearch(text(query, "recherche"), results, {
       relevant: Number(stats?.relevant) || 0,
       best: String(stats?.best ?? "").slice(0, 10),
+      certain: stats?.certain == null ? undefined : Number(stats.certain) || 0,
     });
   },
 );
