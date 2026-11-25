@@ -568,8 +568,8 @@ queryInput.addEventListener('keydown', (e) => {
 // their certain FLAC/WAV match is downloaded. The two files then meet as a
 // conflict, where the user picks the one to keep.
 // Both can run at once: their tracks wait in one shared queue served by the
-// same few workers (the load on Soulseek stays that of one run), the tracks
-// without a file first.
+// same few workers (the load on Soulseek stays that of one run), taken in
+// the order of the track list.
 const AUTO_KINDS = {
   search: {
     btn: $('#btn-auto-search'), text: $('#auto-search-text'), status: $('#auto-search-status'),
@@ -580,7 +580,10 @@ const AUTO_KINDS = {
     label: 'Amélioration auto', name: 'Amélioration',
   },
 };
-/** The run of each kind: { kind, queue (tracks waiting for a worker), total, done, autoDownload, downloaded } */
+/**
+ * The run of each kind: { kind, queue, total, done, autoDownload, downloaded }.
+ * `queue`: the tracks waiting for a worker, as { track, order } (place in the list).
+ */
 const runs = { search: null, upgrade: null };
 const starting = { search: false, upgrade: false };
 /** Searches running for the workers (kept when the validation drops its prefetch) */
@@ -597,8 +600,10 @@ function renderAutoState() {
 }
 
 /** Queue the tracks of a new run, and start the workers still missing. */
-function startRun(kind, tracks, autoDownload) {
-  runs[kind] = { kind, queue: [...tracks], total: tracks.length, done: 0, autoDownload, downloaded: 0 };
+function startRun(kind, tracks, autoDownload, displayed) {
+  const order = new Map(displayed.map((track, i) => [track, i]));
+  const queue = tracks.map((track) => ({ track, order: order.get(track) ?? Infinity }));
+  runs[kind] = { kind, queue, total: tracks.length, done: 0, autoDownload, downloaded: 0 };
   renderAutoState();
   const waitingCount = (runs.search?.queue.length || 0) + (runs.upgrade?.queue.length || 0);
   const missing = Math.min(AUTO_SEARCH_CONCURRENCY - workerCount, waitingCount);
@@ -635,9 +640,9 @@ function stopIfRunning(kind) {
 
 /**
  * Start or stop the run of a kind. `plan(autoDownload)` gives the tracks to
- * queue, and the message to show when there are none.
+ * queue among the `displayed` ones, and the message to show when there are none.
  */
-async function toggleAuto(kind, plan) {
+async function toggleAuto(kind, displayed, plan) {
   if (stopIfRunning(kind)) return;
   starting[kind] = true;
   try {
@@ -648,7 +653,7 @@ async function toggleAuto(kind, plan) {
       refreshDownloads(), // The pushed list may be empty right after slskd starts
     ]);
     const { queue, empty } = plan(autoDownload);
-    if (queue.length) startRun(kind, queue, autoDownload);
+    if (queue.length) startRun(kind, queue, autoDownload, displayed);
     else showToast(empty, 'success');
   } catch (err) {
     toastError(err);
@@ -659,7 +664,7 @@ async function toggleAuto(kind, plan) {
 
 /** `tracks`: the tracks currently displayed. */
 export function toggleAutoSearch(tracks) {
-  return toggleAuto('search', (autoDownload) => {
+  return toggleAuto('search', tracks, (autoDownload) => {
     const queue = [];
     for (const { track, key } of missingTracks(tracks)) {
       if (sessions.has(key)) continue;
@@ -695,7 +700,7 @@ function upgradableTracks(tracks) {
 
 /** `tracks`: the tracks currently displayed. */
 export function toggleAutoUpgrade(tracks) {
-  return toggleAuto('upgrade', (autoDownload) => {
+  return toggleAuto('upgrade', tracks, (autoDownload) => {
     const candidates = upgradableTracks(tracks);
     // Without auto-download, fresh results are already there to validate
     const queue = autoDownload ? candidates : candidates.filter((track) => !isFresh(cachedStats(track)));
@@ -726,13 +731,12 @@ async function autoWorker(initialDelay) {
   }
 }
 
-/** The next waiting track, with its run: tracks without a file first. */
+/** The next waiting track, with its run: the one coming first in the list. */
 function nextWaiting() {
-  for (const run of [runs.search, runs.upgrade]) {
-    const track = run?.queue.shift();
-    if (track) return { run, track };
-  }
-  return null;
+  const [search, upgrade] = [runs.search?.queue[0], runs.upgrade?.queue[0]];
+  if (!search && !upgrade) return null;
+  const run = !upgrade || (search && search.order <= upgrade.order) ? runs.search : runs.upgrade;
+  return { run, track: run.queue.shift().track };
 }
 
 /** Search a track (or read its fresh results), then maybe download it. True if searched. */
