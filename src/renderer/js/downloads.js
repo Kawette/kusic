@@ -232,12 +232,24 @@ function setTransfers(next) {
 const EMPTY_TEXTS = {
   downloads: ['Aucun téléchargement', 'Les téléchargements lancés depuis Soulseek apparaîtront ici'],
   uploads: ['Aucun envoi', 'Les fichiers que les autres utilisateurs téléchargent chez vous apparaîtront ici'],
+  stopped: ['Soulseek est arrêté', 'Démarrez-le dans les paramètres : vos téléchargements y sont gardés et reprennent au démarrage'],
 };
+
+// slskd stopped: the list is empty, which must not read as "no download"
+let slskdRunning = true;
+async function refreshSlskdState() {
+  const status = await api.slskd.getStatus().catch(() => null);
+  if (!status) return;
+  slskdRunning = status.running || !!status.starting;
+  if ($('#view-downloads').classList.contains('active')) render();
+}
+api.slskd.onStateChanged(refreshSlskdState);
+refreshSlskdState();
 
 export function render() {
   const items = mode === 'uploads' ? uploads : transfers;
   // Rebuilding identical rows would only lose clicks and text selection
-  const signature = mode + JSON.stringify(items);
+  const signature = mode + slskdRunning + JSON.stringify(items);
   if (signature === renderedSignature) return;
   renderedSignature = signature;
 
@@ -254,7 +266,7 @@ export function render() {
   $('#dl-clear-failed').hidden = !isDownloads || failed.length === 0;
 
   if (items.length === 0) {
-    [emptyTitle.textContent, emptyText.textContent] = EMPTY_TEXTS[mode];
+    [emptyTitle.textContent, emptyText.textContent] = EMPTY_TEXTS[slskdRunning ? mode : 'stopped'];
     list.replaceChildren(emptyState);
     return;
   }
