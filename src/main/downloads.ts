@@ -91,6 +91,8 @@ export class DownloadTracker {
   /** When slskd was seen logged in to Soulseek since it started (0: not yet), for the downloads it resumes */
   private loggedInAt = 0;
   private polling: Promise<Transfer[]> | null = null;
+  /** The poll that follows the running one, shared by the callers meanwhile */
+  private nextPoll: Promise<Transfer[]> | null = null;
   private lastPushed = "";
   /** Transfer id -> when its queue position was last requested */
   private positionAskedAt = new Map<string, number>();
@@ -167,10 +169,23 @@ export class DownloadTracker {
     this.persist();
   }
 
-  /** Poll slskd now (concurrent callers share the same poll). */
+  /**
+   * Poll slskd, always with a poll started after the call: a running one may
+   * predate the caller's change (download asked, removed…), so one more follows
+   * it, shared by the callers meanwhile.
+   */
   refresh(): Promise<Transfer[]> {
-    this.polling ??= this.poll().finally(() => (this.polling = null));
-    return this.polling;
+    if (!this.polling) {
+      this.polling = this.poll().finally(() => (this.polling = null));
+      return this.polling;
+    }
+    this.nextPoll ??= this.polling
+      .catch(() => {})
+      .then(() => {
+        this.nextPoll = null;
+        return this.refresh();
+      });
+    return this.nextPoll;
   }
 
   /** Send the list to the UI only when something changed. */

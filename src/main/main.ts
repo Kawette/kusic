@@ -359,7 +359,8 @@ ipcMain.handle(
   ) => {
     await slskd.getAPI().download(username, [{ filename, size }]);
     if (trackId) downloads.register(username, filename, size, trackId);
-    downloads.refresh().catch(() => {});
+    // The list with the new transfer reaches the UI before the call returns
+    await downloads.refresh().catch(() => {});
     return true;
   },
 );

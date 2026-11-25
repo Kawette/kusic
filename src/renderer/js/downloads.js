@@ -23,7 +23,7 @@ let byTrack = new Map(); // trackId -> most relevant transfer
 let withTransfer = new Set(); // trackIds of every listed transfer (succeeded and failed too)
 let activeByUser = new Map(); // username -> downloads not finished yet
 // Requested files not in a pushed list yet ({ username, filename, trackId, at }):
-// a list polled just before the request must not drop them from the counts
+// a list polled while the request runs must not drop them from the counts
 let requests = [];
 const REQUEST_TIMEOUT = 60_000;
 let rendered = [];
@@ -157,6 +157,7 @@ export async function requestDownload(username, filename, size, trackId) {
     rebuild();
     throw err;
   }
+  request.at = Date.now(); // Asking may take long: the timeout counts from the answer
   await removeAll(failed.filter((t) => !sameFile.includes(t)));
 }
 
