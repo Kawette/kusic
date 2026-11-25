@@ -634,11 +634,16 @@ async function autoWorker(run, initialDelay) {
 /** Download the track from its best certain source, if any; otherwise it stays a manual choice. */
 async function downloadCertainMatch(run, track, results) {
   if (hasTransferForTrack(track.id)) return;
-  const matches = certainMatches(results, track, activeDownloadsWith).slice(0, AUTO_DOWNLOAD_TRIES);
+  // One file per user: when a user is unreachable, their other files would fail too
+  const users = new Set();
+  const matches = certainMatches(results, track, activeDownloadsWith)
+    .filter((m) => !users.has(m.username) && users.add(m.username))
+    .slice(0, AUTO_DOWNLOAD_TRIES);
   // Unticked during the run: no more automatic downloads
   if (!matches.length || !(await api.getSettings()).autoDownload) return;
   for (const match of matches) {
-    if (auto !== run) return;
+    // Stopped, or downloaded by hand while the settings were read
+    if (auto !== run || hasTransferForTrack(track.id)) return;
     try {
       await requestDownload(match.username, match.filename, match.size, track.id);
       run.downloaded++;
