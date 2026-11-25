@@ -112,7 +112,12 @@ function stateDisplay(t) {
   if (s.includes('cancelled')) return { label: 'Annulé', cls: 'state-error' };
   if (s.includes('timedout')) return { label: 'Expiré', cls: 'state-error' };
   if (s.includes('rejected')) return { label: 'Refusé', cls: 'state-error' };
-  if (t.interrupted) return { label: 'Interrompu', cls: 'state-error' };
+  // Cut by closing slskd and not requested again at its start: why, when the user is offline
+  if (t.interrupted) {
+    return t.userPresence === 'offline'
+      ? { label: 'Hors ligne', cls: 'state-error', title: "Coupé à la fermeture de Kusic : l'utilisateur est hors ligne, réessayez quand il revient" }
+      : { label: 'À relancer', cls: 'state-error', title: "Coupé à la fermeture de Kusic et pas redemandé au démarrage (utilisateur alors injoignable) : réessayez" };
+  }
   if (s.includes('completed')) return { label: 'Erreur', cls: 'state-error' };
   if (isTransferring(t)) return { label: 'En cours', cls: 'state-active' };
   // The place is shown in the progress column, with the queue speed
@@ -252,11 +257,11 @@ export function render() {
 
   rendered = [...active, ...failed.reverse(), ...done.reverse()];
   list.innerHTML = rendered.map((t, i) => {
-    const { label, cls } = stateDisplay(t);
+    const { label, cls, title } = stateDisplay(t);
     const pct = Math.round(t.percentComplete);
     const running = !isFinished(t.state);
     const failedRow = isFailed(t.state);
-    const presence = isRemotelyQueued(t) && t.userPresence ? t.userPresence : '';
+    const presence = (isRemotelyQueued(t) || t.interrupted) && t.userPresence ? t.userPresence : '';
     const sizeText = running ? `${formatSize(t.bytesTransferred)} / ${formatSize(t.size)}` : formatSize(t.size);
     // Waiting in a remote queue: its speed replaces the (empty) progress bar
     const progress = isRemotelyQueued(t) && t.placeInQueue
@@ -279,7 +284,7 @@ export function render() {
       <span class="dl-col-name" title="${escapeHtml(t.filename)}">${escapeHtml(baseName(t.filename))}</span>
       <span class="dl-col-user">${userLabel(t.username, presence, PRESENCE_LABELS[presence])}</span>
       <span class="dl-col-size">${sizeText}</span>
-      <span class="dl-col-state ${cls}" title="${escapeHtml(label)}">${escapeHtml(label)}</span>
+      <span class="dl-col-state ${cls}" title="${escapeHtml(title || label)}">${escapeHtml(label)}</span>
       <span class="dl-col-progress">${progress}</span>
       <span class="dl-col-actions">${actions || ''}</span>
     </div>`;

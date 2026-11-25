@@ -162,6 +162,9 @@ function statusHtml(track) {
     const state = transferStateText(transfer);
     return `<button class="track-download-btn" data-action="download" title="Téléchargement ${escapeHtml(state)} · cliquer pour choisir une autre source">${icon(ICONS.clock, 16)}</button>`;
   }
+  if (transfer?.interrupted && transfer.userPresence === 'offline') {
+    return `<span class="status-tag failed" title="Coupé à la fermeture de Kusic : l'utilisateur est hors ligne">Hors ligne</span>${searchButton}`;
+  }
   if (transfer) {
     return `<span class="status-tag failed" title="Le téléchargement a échoué">Échec</span>${searchButton}`;
   }

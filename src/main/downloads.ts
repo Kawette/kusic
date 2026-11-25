@@ -235,7 +235,7 @@ export class DownloadTracker {
         // Downloaded but not filed yet: removing it from slskd's list would lose it
         ...(this.isPlacing(t) && { placing: true }),
         trackId: this.pending[keyOf(t.username, t.filename)]?.trackId,
-        userPresence: queued ? this.presence.get(t.username)?.value : undefined,
+        userPresence: queued || isInterrupted(r) ? this.presence.get(t.username)?.value : undefined,
         queueEstimate: queued ? this.queueStats.get(t.id)?.estimate : undefined,
         // When the position was last asked, for the UI's countdown to the next check
         queueCheck: askedAt ? { at: askedAt, every: REMOTE_QUEUE_INTERVAL } : undefined,
@@ -287,9 +287,11 @@ export class DownloadTracker {
    * For downloads waiting in someone's queue, ask in the background (at most
    * once a minute) for our position and whether that user is still online.
    */
-  private refreshRemoteQueues(api: SlskdAPI, transfers: Transfer[]): void {
+  private refreshRemoteQueues(api: SlskdAPI, transfers: TrackedTransfer[]): void {
     const now = Date.now();
     const queued = transfers.filter(isRemotelyQueued);
+    // Presence also for downloads cut by closing slskd: offline is why they were not resumed
+    const watched = transfers.filter((t) => isRemotelyQueued(t) || isInterrupted(t));
 
     for (const t of queued) {
       if (now - (this.positionAskedAt.get(t.id) ?? 0) < REMOTE_QUEUE_INTERVAL) continue;
@@ -305,7 +307,7 @@ export class DownloadTracker {
         });
     }
 
-    for (const username of new Set(queued.map((t) => t.username))) {
+    for (const username of new Set(watched.map((t) => t.username))) {
       const known = this.presence.get(username);
       if (known && now - known.at < REMOTE_QUEUE_INTERVAL) continue;
       this.presence.set(username, { value: known?.value ?? "online", at: now });
@@ -319,7 +321,7 @@ export class DownloadTracker {
     const ids = new Set(queued.map((t) => t.id));
     for (const id of this.positionAskedAt.keys()) if (!ids.has(id)) this.positionAskedAt.delete(id);
     for (const id of this.queueStats.keys()) if (!ids.has(id)) this.queueStats.delete(id);
-    const users = new Set(queued.map((t) => t.username));
+    const users = new Set(watched.map((t) => t.username));
     for (const user of this.presence.keys()) if (!users.has(user)) this.presence.delete(user);
   }
 
