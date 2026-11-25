@@ -24,6 +24,7 @@ const fileKey = (username, filename) => `${username}\u0000${filename}`;
 let activeFiles = new Set(); // fileKey of transfers running, waiting or succeeded
 let failedFiles = new Map(); // fileKey -> failed transfer
 let withTransfer = new Set(); // trackIds of every listed transfer (succeeded and failed too)
+let downloading = new Set(); // trackIds of transfers not finished, or requested
 let activeByUser = new Map(); // username -> downloads not finished yet
 // Requested files not in a pushed list yet ({ username, filename, trackId, at }):
 // a list polled while the request runs must not drop them from the counts
@@ -130,6 +131,11 @@ export function failedDownloadLabel(username, filename) {
   return failed ? stateDisplay(failed).label : '';
 }
 
+/** True if a download of this playlist track is running, waiting or being asked. */
+export function isDownloadingTrack(trackId) {
+  return downloading.has(trackId);
+}
+
 /** True if a download of this playlist track is listed (running, failed or finished). */
 export function hasTransferForTrack(trackId) {
   return withTransfer.has(trackId);
@@ -178,6 +184,7 @@ export function transferForTrack(trackId) {
 function rebuild() {
   byTrack = new Map();
   withTransfer = new Set();
+  downloading = new Set();
   activeByUser = new Map();
   activeFiles = new Set();
   failedFiles = new Map();
@@ -187,6 +194,7 @@ function rebuild() {
     if (!isFinished(t.state)) activeByUser.set(t.username, activeDownloadsWith(t.username) + 1);
     if (!t.trackId) continue;
     withTransfer.add(t.trackId);
+    if (!isFinished(t.state)) downloading.add(t.trackId);
     if (isSucceeded(t.state)) continue;
     const current = byTrack.get(t.trackId);
     if (!current || (isFinished(current.state) && !isFinished(t.state))) byTrack.set(t.trackId, t);
@@ -195,7 +203,10 @@ function rebuild() {
   requests = requests.filter((r) => now - r.at < REQUEST_TIMEOUT && !activeFiles.has(fileKey(r.username, r.filename)));
   for (const r of requests) {
     activeByUser.set(r.username, activeDownloadsWith(r.username) + 1);
-    if (r.trackId) withTransfer.add(r.trackId);
+    if (r.trackId) {
+      withTransfer.add(r.trackId);
+      downloading.add(r.trackId);
+    }
   }
 }
 

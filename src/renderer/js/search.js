@@ -10,8 +10,8 @@ import {
   openModal, showToast, sourceBadge, SPINNER, thumb, toastError, userLabel,
 } from './ui.js';
 import {
-  activeDownloadsWith, failedDownloadLabel, hasTransferForTrack, pendingDownloadFor, refreshDownloads,
-  requestDownload,
+  activeDownloadsWith, failedDownloadLabel, hasTransferForTrack, isDownloadingTrack, pendingDownloadFor,
+  refreshDownloads, requestDownload,
 } from './downloads.js';
 import {
   certainMatches, certaintyOf, fallbackQuery, isRelevant, matchDoubts, searchStats, sourceOrder,
@@ -45,6 +45,13 @@ export async function loadCacheSummary() {
 }
 
 /** Cached { relevant, best } for a track's query, or undefined if not cached. */
+/**
+ * A download stands in the way of another one for the track: any listed one
+ * for a track without a file; for an upgrade, only one running or asked (the
+ * finished ones brought the current file, or failed).
+ */
+const hasDownloadFor = (track) => (track.format ? isDownloadingTrack(track.id) : hasTransferForTrack(track.id));
+
 // trackQuery runs a dozen regexes and statuses ask for it on every refresh:
 // the key is computed once per track object (a sync brings new objects)
 const trackKeys = new WeakMap();
@@ -410,7 +417,7 @@ resultsList.addEventListener('click', async (e) => {
   if (current) {
     if (requesting) return; // One file per track
     // The auto-search may have downloaded it meanwhile
-    if (hasTransferForTrack(trackId)) {
+    if (hasDownloadFor(shown.track)) {
       showToast('Cette piste a déjà un téléchargement', 'info');
       await nextInQueue();
       return;
@@ -520,7 +527,7 @@ async function showQueueTrack() {
 async function nextInQueue() {
   if (!queue) return;
   let index = queue.index + 1;
-  while (index < queue.tracks.length && hasTransferForTrack(queue.tracks[index].id)) index++;
+  while (index < queue.tracks.length && hasDownloadFor(queue.tracks[index])) index++;
   if (index >= queue.tracks.length) {
     closeModal(modal);
     showToast('Validation terminée', 'success');
@@ -649,7 +656,7 @@ function upgradableTracks(tracks) {
   const keys = new Set();
   return tracks.filter((track) => {
     if (!track.format || isLossless(track.format) || !track.playlistIds) return false;
-    if (track.conflictId || hasTransferForTrack(track.id)) return false;
+    if (track.conflictId || hasDownloadFor(track)) return false;
     const key = trackKey(track);
     if (keys.has(key) || sessions.has(key)) return false;
     keys.add(key);
@@ -719,7 +726,7 @@ async function autoWorker(run, initialDelay) {
  * upgrade), if any; otherwise it stays a manual choice.
  */
 async function downloadCertainMatch(run, track, results) {
-  if (hasTransferForTrack(track.id)) return;
+  if (hasDownloadFor(track)) return;
   // One file per user: when a user is unreachable, their other files would fail too
   const matches = [];
   for (const match of certainMatches(results, track, activeDownloadsWith)) {
@@ -731,7 +738,7 @@ async function downloadCertainMatch(run, track, results) {
   if (!matches.length || !(await api.getSettings()).autoDownload) return;
   for (const match of matches) {
     // Stopped, or downloaded by hand while the settings were read
-    if (auto !== run || hasTransferForTrack(track.id)) return;
+    if (auto !== run || hasDownloadFor(track)) return;
     try {
       await requestDownload(match.username, match.filename, match.size, track.id);
       run.downloaded++;
