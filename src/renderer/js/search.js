@@ -470,13 +470,17 @@ const isValidatable = (entry) => isFresh(entry) && entry.relevant > 0;
  */
 export function validationQueue(tracks) {
   const missing = missingTracks(tracks)
-    .filter(({ track, key }) => !hasTransferForTrack(track.id) && isValidatable(cacheSummary.get(key)))
-    .map(({ track }) => track);
-  const upgrades = upgradableTracks(tracks).filter((track) => {
-    const cached = cachedStats(track);
-    return isValidatable(cached) && isLossless(cached.best);
-  });
-  return [...missing, ...upgrades];
+    .filter(({ track, key }) => !hasTransferForTrack(track.id) && isValidatable(cacheSummary.get(key)));
+  // A query shown once: the same song without a file is downloaded, not upgraded
+  const keys = new Set(missing.map(({ key }) => key));
+  const upgrades = upgradableTracks(tracks).filter((track) => !keys.has(trackKey(track)) && hasLosslessResults(track));
+  return [...missing.map(({ track }) => track), ...upgrades];
+}
+
+/** Fresh cached results with a lossless one, to choose an upgrade from. */
+function hasLosslessResults(track) {
+  const cached = cachedStats(track);
+  return isValidatable(cached) && isLossless(cached.best);
 }
 
 /** `tracks`: the tracks currently displayed. */
@@ -675,9 +679,12 @@ export async function toggleAutoUpgrade(tracks) {
     // Without auto-download, fresh results are already there to validate
     const queue = autoDownload ? candidates : candidates.filter((track) => !isFresh(cachedStats(track)));
     if (queue.length === 0) {
-      showToast(candidates.length
-        ? 'Les pistes à améliorer ont déjà des résultats récents : voir « À valider »'
-        : 'Aucune piste affichée à améliorer (toutes en FLAC/WAV, ou déjà en téléchargement)', 'success');
+      const found = candidates.filter(hasLosslessResults).length;
+      showToast(!candidates.length
+        ? 'Aucune piste affichée à améliorer (toutes en FLAC/WAV, ou déjà en téléchargement)'
+        : found
+          ? `Pistes déjà cherchées récemment : ${found} à valider dans « À valider »`
+          : 'Pistes déjà cherchées récemment : aucune version sans perte trouvée', 'success');
       return;
     }
     startRun({ kind: 'upgrade', queue, total: queue.length, done: 0, sessions: new Set(), autoDownload, downloaded: 0 });
