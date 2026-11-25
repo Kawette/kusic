@@ -6,7 +6,8 @@
 import { formatDuration } from './format.js';
 
 /** Words that make a version a different track: kept in queries. */
-const VERSION = /\b(remix|rmx|edit|bootleg|rework|vip|flip|remake|mashup|dub)\b/i;
+const VERSION_WORDS = ['remix', 'rmx', 'edit', 'bootleg', 'rework', 'vip', 'flip', 'remake', 'mashup', 'dub'];
+const VERSION = new RegExp(`\\b(${VERSION_WORDS.join('|')})\\b`, 'i');
 /** Version suffixes that only narrow the search (" - Extended Mix", "Free DL"…). */
 const NOISE_SUFFIX = /\b(original|extended|radio|club|mix|version|remaster(ed)?|instrumental|free (dl|download))\b/i;
 
@@ -104,7 +105,7 @@ export function isRelevant(result, { title, artists }) {
 // ─── Certain matches (opt-in automatic download) ────────────
 /** Words naming another version of a song: the file must have exactly the track's ones. */
 const VERSION_MARKERS = new Set([
-  'remix', 'rmx', 'edit', 'bootleg', 'rework', 'vip', 'flip', 'remake', 'mashup', 'dub',
+  ...VERSION_WORDS,
   'extended', 'radio', 'club', 'live', 'acoustic', 'unplugged', 'instrumental', 'acapella',
   'cappella', 'karaoke', 'cover', 'demo', 'reprise', 'sped', 'slowed', 'nightcore', 'reverb',
   'orchestral', 'piano', 'techno', 'hardstyle', 'house', 'tekk', 'hardtekk', 'speed',
