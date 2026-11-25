@@ -56,7 +56,7 @@ describe('fallback and relevance', () => {
       result('b\\Mac Declos - Sexiness.flac', 'flac', 120),
       result('c\\Mac Declos - Other.flac', 'flac', 130),
     ], t);
-    expect(stats).toEqual({ relevant: 2, best: 'FLAC', certain: 0 }); // No duration: never certain
+    expect(stats).toEqual({ relevant: 2, best: 'FLAC', certain: 0, lossless: 1 }); // No duration: never certain
   });
 });
 

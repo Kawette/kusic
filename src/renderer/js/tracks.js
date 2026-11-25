@@ -123,9 +123,15 @@ function upgradeHtml(track) {
   // A failed transfer may be the first try of the current file: failures stay in the downloads view
   const stats = cachedStats(track);
   if (!stats) return button(icon(ICONS.upgrade, 16), 'Chercher une meilleure qualité (FLAC/WAV)');
-  return isLossless(stats.best)
-    ? button(icon(ICONS.upgrade, 16), `Version ${stats.best} trouvée : cliquer pour la choisir`, ' cached')
-    : button(icon(ICONS.upgrade, 16), 'Aucune version sans perte en cache : relancer la recherche', ' empty');
+  // Lossless results counted on the badge, like the relevant ones of the download button
+  // (older cache entries have no count: the best format only)
+  const count = stats.lossless ?? (isLossless(stats.best) ? undefined : 0);
+  const badge = count === undefined ? '' : `<span class="result-count">${count}</span>`;
+  return count !== 0
+    ? button(icon(ICONS.upgrade, 16) + badge,
+      count ? `${count} version${count > 1 ? 's' : ''} sans perte, meilleure : ${stats.best} · cliquer pour choisir` : `Version ${stats.best} trouvée : cliquer pour la choisir`,
+      ' cached')
+    : button(icon(ICONS.upgrade, 16) + badge, 'Aucune version sans perte en cache : relancer la recherche', ' empty');
 }
 
 /** The "Fichier" column: quality, download state, conflict or search button. */

@@ -26,6 +26,8 @@ export interface SearchStats {
   best: string;
   /** Results certainly the track (absent in older entries) */
   certain?: number;
+  /** Lossless results, to upgrade a lossy file (absent in older entries) */
+  lossless?: number;
 }
 
 /** Entries from before relevance stats (built from older, noisier queries) are ignored. */
@@ -72,6 +74,7 @@ export function getCacheSummary(): Record<string, SearchStats & { timestamp: num
         relevant: entry.relevant!,
         best: entry.best ?? "",
         certain: entry.certain,
+        lossless: entry.lossless,
         timestamp: entry.timestamp,
       };
     }

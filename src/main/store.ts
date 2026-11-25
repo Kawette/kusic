@@ -92,6 +92,8 @@ export interface CachedSearchEntry {
   best?: string;
   /** Results certainly the track (absent in older entries) */
   certain?: number;
+  /** Lossless results (absent in older entries) */
+  lossless?: number;
   timestamp: number;
 }
 

@@ -3,7 +3,7 @@
 // so queries must be short and spelled like file names: main artist + title,
 // no "feat.", no "(Original Mix)", no accents or punctuation.
 
-import { formatDuration } from './format.js';
+import { formatDuration, isLossless } from './format.js';
 
 /** Words that make a version a different track: kept in queries. */
 const VERSION_WORDS = ['remix', 'rmx', 'edit', 'bootleg', 'rework', 'vip', 'flip', 'remake', 'mashup', 'dub'];
@@ -238,5 +238,6 @@ export function searchStats(results, track) {
     relevant: relevant.length,
     best: best ? best.extension.toUpperCase() : '',
     certain: relevant.filter((r) => isCertainMatch(r, track, certainty)).length,
+    lossless: relevant.filter((r) => isLossless(r.extension)).length,
   };
 }
