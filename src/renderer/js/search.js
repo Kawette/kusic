@@ -1,25 +1,41 @@
-// ─── Soulseek search: sessions, modal, auto-search ─────────
+// ─── Soulseek search: sessions, modal, validation, auto-search ─
 // One search session per normalized query, shared by the modal and the
 // auto-search. The modal only displays the session it started or joined,
-// so results of another search can never appear in it.
+// so results of another search can never appear in it. The validation chains
+// the modal over the tracks that have cached results, one after the other.
 
 import {
   $, api, baseName, bus, closeModal, durationBand, durationMatch, errorMessage, escapeHtml,
   formatBadge, formatDuration, formatSize, formatTime, icon, ICONS, isLossless, normalizeQuery,
   openModal, showToast, sourceBadge, SPINNER, thumb, toastError, userLabel,
 } from './ui.js';
-import { pendingDownloadFor } from './downloads.js';
-import { fallbackQuery, isRelevant, relevanceOf, searchStats, trackQuery } from './query.js';
+import {
+  activeDownloadsWith, hasTransferForTrack, pendingDownloadFor, refreshDownloads, requestDownload,
+} from './downloads.js';
+import {
+  certainMatches, certaintyOf, fallbackQuery, isRelevant, matchDoubts, searchStats, sourceOrder,
+  trackQuery,
+} from './query.js';
 
 const AUTO_SEARCH_CONCURRENCY = 3;
 const AUTO_SEARCH_DELAY = 5000;
+/** Certain sources tried in turn when a user cannot be reached. */
+const AUTO_DOWNLOAD_TRIES = 3;
 const PAGE_SIZE = 100;
 const MAX_CACHED_RESULTS = 300; // Same limit as the main-process cache
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+/**
+ * Past this age, cached results are searched again before a download is
+ * chosen from them (users go offline, queues change). Older entries still
+ * give the tracks' statuses.
+ */
+const FRESH_MS = 15 * 60 * 1000;
+const isFresh = (entry) => !!entry && Date.now() - entry.timestamp < FRESH_MS;
+
 // ─── Cache mirror (stats only, results stay in main) ────────
-const cacheSummary = new Map(); // key -> { relevant, best, timestamp }
+const cacheSummary = new Map(); // key -> { relevant, best, certain, timestamp }
 
 export async function loadCacheSummary() {
   const summary = await api.searchCache.summary();
@@ -110,6 +126,11 @@ function runSearch(query, track, { force = false, fallback = '' } = {}) {
   return session;
 }
 
+/** Search for a playlist track (or join its running search), with the title-only second try. */
+function searchTrack(track) {
+  return runSearch(trackQuery(track), track, { fallback: fallbackQuery(track) });
+}
+
 function cancelSession(session) {
   session.cancelled = true;
   if (session.id) api.slskd.cancelSearch(session.id).catch(() => {});
@@ -132,6 +153,9 @@ const filters = {
   bitrate: $('#result-bitrate'),
   sort: $('#result-sort'),
 };
+const queueBar = $('#slskd-queue');
+const queuePosition = $('#slskd-queue-position');
+const queueHint = $('#slskd-queue-hint');
 const LOADING_HTML = `<div class="slskd-loading">${SPINNER}<p>Recherche sur le réseau Soulseek…</p></div>`;
 
 /** What the modal displays: the track, and the session or cached results shown. */
@@ -141,6 +165,8 @@ let visible = []; // filtered + sorted results currently rendered
 let limit = PAGE_SIZE;
 let showOffTopic = false; // results whose file name lacks the title
 let relevantCount = 0; // relevant results among currentResults (last render)
+let queue = null; // validation: { tracks, index }
+let requesting = false; // validation: a download request is in flight
 
 async function ensureConnected() {
   const status = await api.slskd.getStatus();
@@ -160,7 +186,14 @@ async function ensureConnected() {
  */
 export async function openSearch(track, options = {}) {
   if (!(await ensureConnected())) return;
+  queue = null;
+  queueBar.hidden = true;
+  openModal(modal, () => { shown = null; });
+  await showTrack(track, options);
+}
 
+/** Display a track in the (open) modal: its card, then its cached or new results. */
+async function showTrack(track, options = {}) {
   shown = { track };
   filters.format.value = options.format || '';
   filters.bitrate.value = '0';
@@ -176,8 +209,6 @@ export async function openSearch(track, options = {}) {
     ${sourceBadge(track.source)}
     <span class="slskd-target-duration" title="Durée de la piste">${formatDuration(track.duration)}</span>
     ${track.format ? `<span class="slskd-target-file" title="Format du fichier actuel">${formatBadge(track.format)}</span>` : ''}`;
-
-  openModal(modal, () => { shown = null; });
   await showQuery(queryInput.value);
 }
 
@@ -195,7 +226,7 @@ async function showQuery(query, { force = false } = {}) {
   resultsList.scrollTop = 0;
   statusEl.textContent = 'Recherche…';
 
-  if (!force && !sessions.has(key) && cacheSummary.has(key)) {
+  if (!force && !sessions.has(key) && isFresh(cacheSummary.get(key))) {
     const cached = await api.searchCache.get(query);
     if (shown !== view) return; // Another query was opened meanwhile
     if (cached) {
@@ -237,7 +268,8 @@ function renderSession(session) {
   }
 }
 
-function applyFilters(results) {
+/** `certainRank`: position of a certain match in the preferred order (Infinity otherwise). */
+function applyFilters(results, certainRank = () => Infinity) {
   const format = filters.format.value;
   const minBitrate = Number(filters.bitrate.value);
   const target = shown?.track?.duration;
@@ -251,9 +283,10 @@ function applyFilters(results) {
     return true;
   });
 
+  // Certain matches first, in the order the automatic download would try them
   const sorters = {
     quality: (a, b) => b.quality - a.quality,
-    duration: (a, b) => band(a) - band(b) || b.quality - a.quality,
+    duration: (a, b) => certainRank(a) - certainRank(b) || band(a) - band(b) || b.quality - a.quality,
     speed: (a, b) => b.uploadSpeed - a.uploadSpeed,
     size: (a, b) => b.size - a.size,
   };
@@ -262,13 +295,26 @@ function applyFilters(results) {
 
 function renderResults(searching) {
   // Off-topic results (other files of the same folder, .nfo, images…) are folded
-  const relevance = relevanceOf(shown.track);
+  const certainty = certaintyOf(shown.track);
   const relevant = [];
   const offTopic = [];
-  for (const r of currentResults) (isRelevant(r, relevance) ? relevant : offTopic).push(r);
+  for (const r of currentResults) (isRelevant(r, certainty.relevance) ? relevant : offTopic).push(r);
   relevantCount = relevant.length;
-  const offTopicSet = new Set(offTopic);
-  const all = [...applyFilters(relevant), ...(showOffTopic ? applyFilters(offTopic) : [])];
+  // Why each relevant result is not certain; the certain ones in the automatic download's order
+  const doubts = new Map(relevant.map((r) => [r, matchDoubts(r, shown.track, certainty)]));
+  const certain = relevant.filter((r) => doubts.get(r).length === 0).sort(sourceOrder(activeDownloadsWith));
+  const rank = new Map(certain.map((r, i) => [r, i]));
+  const best = certain[0];
+  if (queue) {
+    queueHint.textContent = best
+      ? 'Correspondance certaine : c\'est le fichier que le mode auto télécharge'
+      : relevant.length ? 'Rien de certain : choisissez un fichier ou passez' : '';
+    queueHint.classList.toggle('certain', !!best);
+  }
+  const all = [
+    ...applyFilters(relevant, (r) => rank.get(r) ?? Infinity),
+    ...(showOffTopic ? applyFilters(offTopic) : []),
+  ];
   visible = all.slice(0, limit);
   const offTopicToggle = offTopic.length
     ? `<button class="btn-secondary load-more" id="btn-off-topic">${showOffTopic ? 'Masquer' : 'Afficher aussi'} les ${offTopic.length} résultats hors sujet</button>`
@@ -295,9 +341,13 @@ function renderResults(searching) {
       `Vitesse d'envoi : ${Math.round(r.uploadSpeed / 1024)} Ko/s`,
     ].filter(Boolean).join('\n');
 
-    const off = offTopicSet.has(r);
-    return `<div class="slskd-result-row${off ? ' off-topic' : ''}" ${off ? 'title="Le nom du fichier ne contient pas le titre"' : ''}>
-      <span class="result-filename" title="${escapeHtml(r.filename)}">${escapeHtml(name)}</span>
+    const off = !doubts.has(r);
+    const tags = matchTags(doubts.get(r), r === best);
+    return `<div class="slskd-result-row${off ? ' off-topic' : ''}${r === best ? ' best-match' : ''}" ${off ? 'title="Le nom du fichier ne contient pas le titre"' : ''}>
+      <div class="result-file">
+        <span class="result-filename" title="${escapeHtml(r.filename)}">${escapeHtml(name)}</span>
+        ${tags ? `<span class="result-tags">${tags}</span>` : ''}
+      </div>
       ${userLabel(r.username, slot, userInfo)}
       <span class="result-format">${formatBadge(r.extension)}</span>
       <span class="result-quality">${escapeHtml(quality)}</span>
@@ -314,6 +364,14 @@ function renderResults(searching) {
   }
   rows.push(offTopicToggle);
   resultsList.innerHTML = rows.join('');
+}
+
+/** Tags of a result: why it is not certain, or that it is (none for off-topic results). */
+function matchTags(doubts, best) {
+  if (!doubts) return '';
+  if (best) return '<span class="match-tag certain" title="Correspondance certaine : le fichier que le mode auto télécharge">Choix auto</span>';
+  if (doubts.length === 0) return '<span class="match-tag certain" title="Correspondance certaine">Certain</span>';
+  return doubts.map((d) => `<span class="match-tag doubt">${escapeHtml(d)}</span>`).join('');
 }
 
 function rerender() {
@@ -335,15 +393,119 @@ resultsList.addEventListener('click', async (e) => {
   if (!btn || btn.disabled) return;
   const result = visible[btn.dataset.index];
   const trackId = shown?.track?.id;
-  // The choice is made: back to the list, where the download shows up
-  closeModal(modal);
+  const current = queue;
+  if (current) {
+    if (requesting) return; // One file per track
+    // The auto-search may have downloaded it meanwhile
+    if (hasTransferForTrack(trackId)) {
+      showToast('Cette piste a déjà un téléchargement', 'info');
+      await nextInQueue();
+      return;
+    }
+    requesting = true;
+    btn.disabled = true;
+  } else {
+    // The choice is made: back to the list, where the download shows up
+    closeModal(modal);
+  }
   try {
-    await api.slskd.download(result.username, result.filename, result.size, trackId);
+    await requestDownload(result.username, result.filename, result.size, trackId);
     showToast('Téléchargement lancé', 'success');
   } catch (err) {
+    btn.disabled = false;
     toastError(err);
+    return;
+  } finally {
+    if (current) requesting = false;
   }
+  // Validation: on to the next track, unless the user already moved on ("Passer")
+  if (current && queue === current && shown?.track?.id === trackId) await nextInQueue();
 });
+
+// ─── Validation ─────────────────────────────────────────────
+// The tracks with relevant cached results, shown one after the other in the
+// modal: download one of the results (certain or not) or skip the track.
+
+/** Playlist tracks without a file, one per query: [{ track, key }]. */
+function missingTracks(tracks) {
+  const keys = new Set();
+  const list = [];
+  for (const track of tracks) {
+    if (track.format || !track.playlistIds) continue;
+    const key = normalizeQuery(trackQuery(track));
+    if (keys.has(key)) continue;
+    keys.add(key);
+    list.push({ track, key });
+  }
+  return list;
+}
+
+/** Relevant results recent enough to choose from without searching again. */
+const isValidatable = (entry) => isFresh(entry) && entry.relevant > 0;
+
+/** Displayed tracks waiting for a choice: no file, no download, fresh relevant cached results. */
+export function validationQueue(tracks) {
+  return missingTracks(tracks)
+    .filter(({ track, key }) => !hasTransferForTrack(track.id) && isValidatable(cacheSummary.get(key)))
+    .map(({ track }) => track);
+}
+
+/** `tracks`: the tracks currently displayed. */
+export async function openValidation(tracks) {
+  const [connected] = await Promise.all([
+    ensureConnected(),
+    refreshDownloads(), // The pushed list may be empty right after slskd starts
+  ]);
+  if (!connected) return;
+  const list = validationQueue(tracks);
+  if (list.length === 0) {
+    showToast('Aucune piste à valider : lancez d\'abord la recherche auto', 'success');
+    return;
+  }
+  queue = { tracks: list, index: 0 };
+  queueBar.hidden = false;
+  openModal(modal, () => { cancelPrefetch(); shown = null; queue = null; });
+  await showQueueTrack();
+}
+
+let prefetched = null; // validation: the next track's search, started ahead
+
+/** Stop the next track's search when it is not needed any more (skipped, closed). */
+function cancelPrefetch() {
+  const session = prefetched;
+  prefetched = null;
+  // Kept when now shown (it was the next track) or awaited by the auto-search
+  if (session && !session.complete && shown?.session !== session && !auto?.sessions.has(session)) {
+    cancelSession(session);
+  }
+}
+
+async function showQueueTrack() {
+  const track = queue.tracks[queue.index];
+  queuePosition.textContent = `Piste ${queue.index + 1} / ${queue.tracks.length}`;
+  queueHint.textContent = '';
+  await showTrack(track);
+  cancelPrefetch();
+  // Searched while this one is checked, so that it shows up-to-date results at once
+  const next = queue?.tracks[queue.index + 1];
+  if (next && !isFresh(cachedStats(next))) prefetched = searchTrack(next);
+}
+
+/** Next track, skipping those downloaded meanwhile. */
+async function nextInQueue() {
+  if (!queue) return;
+  let index = queue.index + 1;
+  while (index < queue.tracks.length && hasTransferForTrack(queue.tracks[index].id)) index++;
+  if (index >= queue.tracks.length) {
+    closeModal(modal);
+    showToast('Validation terminée', 'success');
+    return;
+  }
+  queue.index = index;
+  await showQueueTrack();
+}
+
+$('#slskd-queue-skip').addEventListener('click', () => nextInQueue().catch(toastError));
 
 Object.values(filters).forEach((el) => el.addEventListener('change', () => {
   limit = PAGE_SIZE;
@@ -361,12 +523,13 @@ queryInput.addEventListener('keydown', (e) => {
 });
 
 // ─── Auto-search ────────────────────────────────────────────
-// Searches only: results are cached for the user to choose from, nothing is
-// downloaded automatically.
+// Results are cached for the user to choose from. Only with the opt-in
+// "autoDownload" setting, a track whose results hold a certain match
+// (see certainMatches) is downloaded without a click.
 const autoBtn = $('#btn-auto-search');
 const autoText = $('#auto-search-text');
 const autoStatus = $('#auto-search-status');
-let auto = null; // { queue, total, done, sessions }
+let auto = null; // { queue, total, done, sessions, autoDownload, downloaded }
 let autoStarting = false;
 
 function renderAutoState() {
@@ -385,29 +548,40 @@ export async function toggleAutoSearch(tracks) {
   autoStarting = true;
   try {
     if (!(await ensureConnected())) return;
-    await loadCacheSummary(); // Drop entries that expired during a long session
-    const keys = new Set();
-    const queue = []; // tracks to search
-    for (const track of tracks) {
-      if (track.format || !track.playlistIds) continue;
-      const key = normalizeQuery(trackQuery(track));
-      if (keys.has(key) || cacheSummary.has(key) || sessions.has(key)) continue;
-      keys.add(key);
-      queue.push(track);
+    const [{ autoDownload }] = await Promise.all([
+      api.getSettings(),
+      loadCacheSummary(), // Drop entries that expired during a long session
+      refreshDownloads(), // The pushed list may be empty right after slskd starts
+    ]);
+    const queue = [];
+    for (const { track, key } of missingTracks(tracks)) {
+      if (sessions.has(key)) continue;
+      const cached = cacheSummary.get(key);
+      const waiting = !hasTransferForTrack(track.id);
+      // Stale relevant results are searched again to be validated; otherwise cached
+      // tracks only to look for a certain match (older entries have no certain count)
+      if (!cached
+        || (waiting && cached.relevant > 0 && !isFresh(cached))
+        || (waiting && autoDownload && (cached.certain ?? cached.relevant) > 0)) {
+        queue.push(track);
+      }
     }
     if (queue.length === 0) {
       showToast('Toutes les pistes affichées ont déjà des résultats en cache', 'success');
       return;
     }
 
-    const run = { queue, total: queue.length, done: 0, sessions: new Set() };
+    const run = { queue, total: queue.length, done: 0, sessions: new Set(), autoDownload, downloaded: 0 };
     auto = run;
     renderAutoState();
     const workers = Array.from({ length: Math.min(AUTO_SEARCH_CONCURRENCY, queue.length) },
       (_, i) => autoWorker(run, i * AUTO_SEARCH_DELAY));
     Promise.all(workers)
       .then(() => {
-        if (auto === run) stopAutoSearch(`Recherche terminée (${run.done} pistes)`, 'success');
+        if (auto !== run) return;
+        const n = run.downloaded;
+        const downloads = run.autoDownload ? `, ${n} téléchargement${n > 1 ? 's' : ''} lancé${n > 1 ? 's' : ''}` : '';
+        stopAutoSearch(`Recherche terminée (${run.done} pistes${downloads})`, 'success');
       })
       .catch(toastError);
   } catch (err) {
@@ -422,8 +596,14 @@ async function autoWorker(run, initialDelay) {
   while (auto === run && run.queue.length > 0) {
     const track = run.queue.shift();
     const query = trackQuery(track);
-    if (!cacheSummary.has(normalizeQuery(query))) {
-      const session = runSearch(query, track, { fallback: fallbackQuery(track) });
+    let results = null;
+    const searched = !isFresh(cacheSummary.get(normalizeQuery(query)));
+    if (!searched) {
+      // Recent results (or searched meanwhile, in the modal…): no new search
+      if (run.autoDownload) results = (await api.searchCache.get(query).catch(() => null))?.results;
+    } else {
+      // Not cached, or stale: users may have gone offline (see FRESH_MS)
+      const session = searchTrack(track);
       run.sessions.add(session);
       await session.promise;
       run.sessions.delete(session);
@@ -434,20 +614,41 @@ async function autoWorker(run, initialDelay) {
           return;
         }
       }
+      if (!session.error && !session.cancelled) results = session.results;
     }
+    if (run.autoDownload && results && auto === run) await downloadCertainMatch(run, track, results);
     if (auto !== run) return;
     run.done++;
     renderAutoState();
-    if (run.queue.length > 0) await sleep(AUTO_SEARCH_DELAY);
+    if (searched && run.queue.length > 0) await sleep(AUTO_SEARCH_DELAY);
+  }
+}
+
+/** Download the track from its best certain source, if any; otherwise it stays a manual choice. */
+async function downloadCertainMatch(run, track, results) {
+  if (hasTransferForTrack(track.id)) return;
+  const matches = certainMatches(results, track, activeDownloadsWith).slice(0, AUTO_DOWNLOAD_TRIES);
+  // Unticked during the run: no more automatic downloads
+  if (!matches.length || !(await api.getSettings()).autoDownload) return;
+  for (const match of matches) {
+    if (auto !== run) return;
+    try {
+      await requestDownload(match.username, match.filename, match.size, track.id);
+      run.downloaded++;
+      return;
+    } catch (err) {
+      // Unreachable user…: try the next certain source
+      console.warn('[Kusic] Auto-download failed:', errorMessage(err));
+    }
   }
 }
 
 function stopAutoSearch(message, type = 'info') {
   const run = auto;
   auto = null;
-  // Cancel in-flight searches, except the one displayed in the modal
+  // Cancel in-flight searches, except those of the validation (displayed, next track)
   for (const session of run?.sessions || []) {
-    if (shown?.session !== session) cancelSession(session);
+    if (shown?.session !== session && prefetched !== session) cancelSession(session);
   }
   renderAutoState();
   if (message) showToast(message, type);

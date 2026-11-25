@@ -12,6 +12,7 @@ const fields = {
   password: $('#soulseek-password'),
   libraryPath: $('#soulseek-library-path'),
 };
+const autoDownload = $('#auto-download');
 const savedIndicator = $('#settings-saved');
 const toggleBtn = $('#btn-slskd-toggle');
 const statusText = $('#slskd-status-text');
@@ -31,6 +32,7 @@ export async function loadSettings() {
   fields.username.value = settings.soulseek.username;
   fields.password.value = settings.soulseek.password;
   fields.libraryPath.value = settings.soulseek.libraryPath;
+  autoDownload.checked = settings.autoDownload;
 
   const platform = await api.slskd.checkPlatform();
   platformSupported = platform.supported;
@@ -61,9 +63,7 @@ async function saveNow() {
         libraryPath: fields.libraryPath.value,
       },
     });
-    savedIndicator.hidden = false;
-    clearTimeout(savedTimer);
-    savedTimer = setTimeout(() => { savedIndicator.hidden = true; }, 2000);
+    flashSaved();
 
     if (soulseekChanged) {
       const status = await api.slskd.getStatus();
@@ -72,6 +72,12 @@ async function saveNow() {
   } catch (err) {
     toastError(err);
   }
+}
+
+function flashSaved() {
+  savedIndicator.hidden = false;
+  clearTimeout(savedTimer);
+  savedTimer = setTimeout(() => { savedIndicator.hidden = true; }, 2000);
 }
 
 function scheduleSave(soulseek) {
@@ -84,6 +90,16 @@ function scheduleSave(soulseek) {
 export async function flushSettings() {
   if (saveTimer) await saveNow();
 }
+
+autoDownload.addEventListener('change', async () => {
+  try {
+    await api.saveSettings({ autoDownload: autoDownload.checked });
+    flashSaved();
+  } catch (err) {
+    autoDownload.checked = !autoDownload.checked;
+    toastError(err);
+  }
+});
 
 fields.clientId.addEventListener('input', () => scheduleSave(false));
 fields.clientSecret.addEventListener('input', () => scheduleSave(false));

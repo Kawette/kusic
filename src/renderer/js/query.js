@@ -3,6 +3,8 @@
 // so queries must be short and spelled like file names: main artist + title,
 // no "feat.", no "(Original Mix)", no accents or punctuation.
 
+import { formatDuration, isLossless } from './format.js';
+
 /** Words that make a version a different track: kept in queries. */
 const VERSION = /\b(remix|rmx|edit|bootleg|rework|vip|flip|remake|mashup|dub)\b/i;
 /** Version suffixes that only narrow the search (" - Extended Mix", "Free DL"…). */
@@ -99,10 +101,132 @@ export function isRelevant(result, { title, artists }) {
   return artists.length === 0 || artists.some((words) => words.every((w) => path.has(w)));
 }
 
-/** Relevant results count and best format among them, e.g. { relevant: 5, best: 'FLAC' }. */
-export function searchStats(results, track) {
+// ─── Certain matches (opt-in automatic download) ────────────
+/** Words naming another version of a song: the file must have exactly the track's ones. */
+const VERSION_MARKERS = new Set([
+  'remix', 'rmx', 'edit', 'bootleg', 'rework', 'vip', 'flip', 'remake', 'mashup', 'dub',
+  'extended', 'radio', 'club', 'live', 'acoustic', 'unplugged', 'instrumental', 'acapella',
+  'cappella', 'karaoke', 'cover', 'demo', 'reprise', 'sped', 'slowed', 'nightcore', 'reverb',
+  'orchestral', 'piano', 'techno', 'hardstyle', 'house', 'tekk', 'hardtekk', 'speed',
+  // DJ pool versions: muted or uncensored lyrics
+  'clean', 'dirty', 'explicit', 'censored',
+]);
+/** Up to this gap, a file has the track's length (encoder padding only). */
+const CERTAIN_DURATION_MS = 2000;
+const MIN_MP3_BITRATE = 320;
+
+const capitalize = (w) => w.charAt(0).toUpperCase() + w.slice(1);
+
+/** What a certain file must match, worked out once per track (see matchDoubts). */
+export function certaintyOf(track) {
   const relevance = relevanceOf(track);
-  const relevant = results.filter((r) => isRelevant(r, relevance));
+  const parts = splitDash(cleanTitle(track.title));
+  // Only a SoundCloud title holds the artist ("Artist - Title", the uploader being
+  // often a label). Elsewhere " - Acoustic", " - Live at Wembley"… is part of the title.
+  const dashArtist = track.source === 'soundcloud' ? parts.artist : undefined;
+  const title = parts.artist !== undefined && dashArtist === undefined
+    ? `${parts.artist} ${parts.title}`
+    : `${parts.title} ${parts.version ?? ''}`;
+  const titleWords = new Set(relevance.title);
+  // Artist names ("Club Yoko", "Live Wire"…) are not version markers
+  const artistWords = new Set(relevance.artists.flat());
+  const versionOf = (words) => new Set(words.filter((w) => VERSION_MARKERS.has(w) && !artistWords.has(w)));
+  return {
+    relevance,
+    duration: track.duration,
+    // Every credited artist must be in the path. An artist named like the title
+    // ("fake_friends" for "Fake Friends") proves nothing and is not counted.
+    credited: (dashArtist ?? track.artist ?? '')
+      .split(ARTIST_SEPARATOR)
+      .map((name) => ({ name: name.trim(), words: searchWords(name) }))
+      .filter(({ words }) => words.length && !words.every((w) => titleWords.has(w))),
+    // Title and version: the remixer's name too
+    wanted: [...new Set(searchWords(title))],
+    // Markers of the full title, so that an unwanted "(Live)" dropped by the cleaning still counts
+    version: versionOf(searchWords(track.title)),
+    versionOf,
+  };
+}
+
+/**
+ * Why a result is not certainly the track (short labels, e.g. "Extended",
+ * "Durée +1:17", "Artiste absent : Morelia"); empty when it is certain:
+ * relevant, every credited artist in the path, every word of the title and its
+ * version (remixer…) in the file name, no version marker more or less, same
+ * length within 2 s, and lossless or MP3 320.
+ */
+export function matchDoubts(result, track, certainty = certaintyOf(track)) {
+  const { relevance, credited, wanted, version, versionOf, duration } = certainty;
+  // A title without Latin letters or digits (日本語, кириллица…) cannot be compared:
+  // any file of the artist would pass
+  if (!relevance.title.length || !wanted.length) return ['Titre non comparable'];
+  if (!isRelevant(result, relevance)) return ['Hors sujet'];
+  const doubts = [];
+
+  const pathWords = new Set(searchWords(result.filename));
+  for (const { name, words } of credited) {
+    if (!words.every((w) => pathWords.has(w))) doubts.push(`Artiste absent : ${name}`);
+  }
+
+  const name = searchWords(result.filename.split(/[\\/]/).pop());
+  const nameSet = new Set(name);
+  const missing = wanted.filter((w) => !nameSet.has(w));
+  const fileVersion = versionOf(name);
+  doubts.push(...[...fileVersion].filter((w) => !version.has(w)).map(capitalize));
+  if (missing.length) doubts.push(`Manque « ${missing.join(' ')} »`);
+  // Markers only in the full title ("(Live at …)" is dropped from the cleaned one)
+  const absent = [...version].filter((w) => !fileVersion.has(w) && !missing.includes(w));
+  if (absent.length) doubts.push(`Manque « ${absent.join(' ')} »`);
+
+  if (!result.length || !duration) {
+    doubts.push('Durée inconnue');
+  } else {
+    const gap = result.length * 1000 - duration;
+    if (Math.abs(gap) > CERTAIN_DURATION_MS) doubts.push(`Durée ${gap < 0 ? '−' : '+'}${formatDuration(Math.abs(gap))}`);
+  }
+
+  if (!isLossless(result.extension) && !(result.extension === 'mp3' && (result.bitRate || 0) >= MIN_MP3_BITRATE)) {
+    const ext = (result.extension || '?').toUpperCase();
+    doubts.push(result.extension === 'mp3' ? `${ext} ${result.bitRate || '?'} kbps` : ext);
+  }
+  return doubts;
+}
+
+/** True only when a result is, beyond doubt, the track (see matchDoubts). */
+export function isCertainMatch(result, track, certainty = certaintyOf(track)) {
+  return matchDoubts(result, track, certainty).length === 0;
+}
+
+const formatRank = (r) => (r.extension === 'flac' ? 2 : isLossless(r.extension) ? 1 : 0);
+
+/**
+ * Order of certain sources: FLAC always first, then other lossless; within a
+ * format, the user with the fewest of our running downloads (spreads them, a
+ * user's queue being often slow or capped), then free slot, shortest queue,
+ * fastest user. `downloadsWith(username)`: our running downloads from that user.
+ */
+export function sourceOrder(downloadsWith = () => 0) {
+  return (a, b) => formatRank(b) - formatRank(a)
+    || downloadsWith(a.username) - downloadsWith(b.username)
+    || Number(!!b.hasFreeUploadSlot) - Number(!!a.hasFreeUploadSlot)
+    || (a.queueLength || 0) - (b.queueLength || 0)
+    || (b.uploadSpeed || 0) - (a.uploadSpeed || 0);
+}
+
+/** The results that can be downloaded automatically, preferred first (empty when none is certain). */
+export function certainMatches(results, track, downloadsWith) {
+  const certainty = certaintyOf(track);
+  return results.filter((r) => isCertainMatch(r, track, certainty)).sort(sourceOrder(downloadsWith));
+}
+
+/** Relevant and certain results counts, best format among them, e.g. { relevant: 5, best: 'FLAC', certain: 1 }. */
+export function searchStats(results, track) {
+  const certainty = certaintyOf(track);
+  const relevant = results.filter((r) => isRelevant(r, certainty.relevance));
   const best = relevant.reduce((a, b) => (!a || b.quality > a.quality ? b : a), null);
-  return { relevant: relevant.length, best: best ? best.extension.toUpperCase() : '' };
+  return {
+    relevant: relevant.length,
+    best: best ? best.extension.toUpperCase() : '',
+    certain: relevant.filter((r) => isCertainMatch(r, track, certainty)).length,
+  };
 }

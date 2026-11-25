@@ -54,6 +54,8 @@ export interface SoulseekConfig {
 export interface AppSettings {
   spotify: SpotifyConfig;
   soulseek: SoulseekConfig;
+  /** Auto-search downloads the results that are certainly the track (opt-in) */
+  autoDownload: boolean;
 }
 
 export interface TrackFilters {

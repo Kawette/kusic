@@ -5,7 +5,9 @@ import {
   isLossless, isPlayable, qualityLabel, showMenu, showToast, sourceBadge, SPINNER, thumb, toastError,
   withBusyButton,
 } from './ui.js';
-import { cachedStats, isSearching, openSearch, toggleAutoSearch } from './search.js';
+import {
+  cachedStats, isSearching, openSearch, openValidation, toggleAutoSearch, validationQueue,
+} from './search.js';
 import { isFinished, isTransferring, transferForTrack, waitingLabel } from './downloads.js';
 import { openIdentify } from './identify.js';
 import { isPlaying, playTrack } from './player.js';
@@ -183,6 +185,7 @@ function rowHtml(track, i) {
 
 function render() {
   statusCache.clear();
+  updateValidationCount();
   if (tracks.length === 0) {
     const filtered = searchInput.value || filterSource.value !== 'all' || filterPlaylist.value;
     emptyState.querySelector('h2').textContent = filtered ? 'Aucun résultat' : 'Aucune piste';
@@ -196,6 +199,14 @@ function render() {
   markPlaying();
 }
 
+/** Badge of the validation button: displayed tracks waiting for a choice. */
+function updateValidationCount() {
+  const badge = $('#validate-count');
+  const count = validationQueue(tracks).length;
+  badge.textContent = count;
+  badge.hidden = count === 0;
+}
+
 /** Refresh only the status cells that changed (search/download progress). */
 function refreshStatuses() {
   for (const row of trackList.querySelectorAll('.track-row')) {
@@ -207,6 +218,7 @@ function refreshStatuses() {
       row.querySelector('.track-actions').innerHTML = status;
     }
   }
+  updateValidationCount();
 }
 
 let statusFrame = 0;
@@ -218,6 +230,8 @@ function scheduleStatusRefresh() {
 }
 
 bus.on('search:changed', scheduleStatusRefresh);
+// Cached results stop counting as "to validate" once stale (see FRESH_MS in search.js)
+setInterval(updateValidationCount, 60 * 1000);
 
 /** Highlight the row being played. */
 function markPlaying() {
@@ -312,6 +326,7 @@ filterPlaylist.addEventListener('change', () => {
 });
 
 $('#btn-auto-search').addEventListener('click', () => toggleAutoSearch(tracks));
+$('#btn-validate').addEventListener('click', () => openValidation(tracks).catch(toastError));
 
 /** Fetch every playlist again from Spotify / SoundCloud. */
 export async function refreshPlaylists(btn) {

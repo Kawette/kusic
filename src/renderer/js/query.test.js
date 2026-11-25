@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { fallbackQuery, isRelevant, relevanceOf, searchStats, trackQuery } from './query.js';
+import {
+  certainMatches, fallbackQuery, isCertainMatch, isRelevant, matchDoubts, relevanceOf, searchStats,
+  trackQuery,
+} from './query.js';
 
 const track = (artist, title) => ({ artist, title });
 const result = (filename, extension = 'flac', quality = 100) => ({ filename, extension, quality });
@@ -53,6 +56,112 @@ describe('fallback and relevance', () => {
       result('b\\Mac Declos - Sexiness.flac', 'flac', 120),
       result('c\\Mac Declos - Other.flac', 'flac', 130),
     ], t);
-    expect(stats).toEqual({ relevant: 2, best: 'FLAC' });
+    expect(stats).toEqual({ relevant: 2, best: 'FLAC', certain: 0 }); // No duration: never certain
+  });
+});
+
+describe('certain matches (automatic download)', () => {
+  const song = (artist, title, seconds) => ({ artist, title, duration: seconds * 1000 });
+  const file = (filename, extra = {}) => ({
+    filename, extension: filename.split('.').pop(), length: 300, bitRate: 0, hasFreeUploadSlot: true, ...extra,
+  });
+
+  it('accepts the same song, same length, good quality', () => {
+    const t = song('Mac Declos', 'Sexiness', 300);
+    expect(isCertainMatch(file('a/Mac Declos - Sexiness.flac'), t)).toBe(true);
+    expect(isCertainMatch(file('a/Mac Declos/01 - Sexiness (Original Mix).mp3', { bitRate: 320, length: 301 }), t)).toBe(true);
+  });
+
+  it('refuses another version of the song', () => {
+    const t = song('Mac Declos', 'Sexiness', 300);
+    expect(isCertainMatch(file('a/Mac Declos - Sexiness (DJ X Remix).flac'), t)).toBe(false);
+    expect(isCertainMatch(file('a/Mac Declos - Sexiness (Extended Mix).flac'), t)).toBe(false);
+    expect(isCertainMatch(file('a/Mac Declos - Sexiness (Live).flac'), t)).toBe(false);
+    expect(isCertainMatch(file('a/Mac Declos - Sexiness (Instrumental).flac'), t)).toBe(false);
+  });
+
+  it('needs the right remixer for a remix', () => {
+    const t = song('Lock N Load', 'Blow Ya Mind - DJ Daddy Trance Remix', 300);
+    expect(isCertainMatch(file('x/Lock N Load - Blow Ya Mind (DJ Daddy Trance Remix).flac'), t)).toBe(true);
+    expect(isCertainMatch(file('x/Lock N Load - Blow Ya Mind (Other Guy Remix).flac'), t)).toBe(false);
+    expect(isCertainMatch(file('x/Lock N Load - Blow Ya Mind.flac'), t)).toBe(false);
+  });
+
+  it('refuses a different length, an unknown length or a poor quality', () => {
+    const t = song('Mac Declos', 'Sexiness', 300);
+    expect(isCertainMatch(file('a/Mac Declos - Sexiness.flac', { length: 303 }), t)).toBe(false);
+    expect(isCertainMatch(file('a/Mac Declos - Sexiness.flac', { length: 0 }), t)).toBe(false);
+    expect(isCertainMatch(file('a/Mac Declos - Sexiness.mp3', { bitRate: 256 }), t)).toBe(false);
+    expect(isCertainMatch(file('a/Mac Declos - Sexiness.m4a'), t)).toBe(false);
+  });
+
+  it('does not mistake an artist name for a version', () => {
+    const t = song('Club Yoko', 'Sunrise', 300);
+    expect(isCertainMatch(file('a/Club Yoko - Sunrise.flac'), t)).toBe(true);
+  });
+
+  it('does not trust an artist named like the title', () => {
+    const t = song('fake_friends, Jacidorex, AIROD', 'Fake Friends', 300);
+    expect(isCertainMatch(file('Joan Jett and The Blackhearts - Album - 01 Fake Friends.flac'), t)).toBe(false);
+    expect(isCertainMatch(file('Jacidorex & AIROD/01 Fake Friends.flac'), t)).toBe(true);
+    // Every other credited artist is needed
+    expect(isCertainMatch(file('Jacidorex/01 Fake Friends.flac'), t)).toBe(false);
+    // A song named after its only artist stays possible
+    expect(isCertainMatch(file('a/Sopik - Sopik.flac'), song('Sopik', 'Sopik', 300))).toBe(true);
+  });
+
+  it('refuses DJ pool clean / dirty versions', () => {
+    const t = song('Panteros666', 'Chasing Dreams', 300);
+    expect(isCertainMatch(file('a/Panteros666 - Chasing Dreams (Clean) 9A 98.mp3', { bitRate: 320 }), t)).toBe(false);
+    expect(isCertainMatch(file('a/Panteros666 - Chasing Dreams (Dirty).flac'), t)).toBe(false);
+  });
+
+  it('explains why a result is not certain', () => {
+    const t = song('LUKA, Morelia', 'Breathe', 216);
+    expect(matchDoubts(file('a/Luka - Breathe (Extended Mix).m4a', { length: 293 }), t))
+      .toEqual(['Artiste absent : Morelia', 'Extended', 'Durée +1:17', 'M4A']);
+    expect(matchDoubts(file('a/Luka & Morelia - Breathe.mp3', { bitRate: 256, length: 214 }), t))
+      .toEqual(['MP3 256 kbps']); // 2 s off: still the same length
+    expect(matchDoubts(file('a/Luka & Morelia - Breathe.flac', { length: 216 }), t)).toEqual([]);
+    const remix = song('Lock N Load', 'Blow Ya Mind - DJ Daddy Trance Remix', 300);
+    expect(matchDoubts(file('x/Lock N Load - Blow Ya Mind.flac'), remix)).toEqual(['Manque « dj daddy trance remix »']);
+    const live = song('Mac Declos', 'Sexiness (Live at Fabric)', 300);
+    expect(matchDoubts(file('a/Mac Declos - Sexiness.flac'), live)).toEqual(['Manque « live »']);
+  });
+
+  it('prefers FLAC, then a free slot', () => {
+    const t = song('Mac Declos', 'Sexiness', 300);
+    const busyFlac = file('a/Mac Declos - Sexiness.flac', { hasFreeUploadSlot: false });
+    const freeMp3 = file('b/Mac Declos - Sexiness.mp3', { bitRate: 320 });
+    const freeFlac = file('c/Mac Declos - Sexiness.flac');
+    expect(certainMatches([freeMp3, busyFlac], t)).toEqual([busyFlac, freeMp3]);
+    expect(certainMatches([busyFlac, freeMp3, freeFlac], t)[0]).toBe(freeFlac);
+    expect(certainMatches([file('d/Mac Declos - Sexiness (Remix).flac')], t)).toEqual([]);
+  });
+
+  it('never trusts a title it cannot read', () => {
+    const t = song('YOASOBI', '夜に駆ける', 300);
+    expect(matchDoubts(file('m/YOASOBI/03 - 群青.flac'), t)).toEqual(['Titre non comparable']);
+  });
+
+  it('reads " - Acoustic" as the version outside SoundCloud', () => {
+    const t = song('Ed Sheeran', 'Perfect - Acoustic', 300);
+    expect(isCertainMatch(file('m/Ed Sheeran - Perfect (Acoustic).flac'), t)).toBe(true);
+    expect(isCertainMatch(file('m/Ed Sheeran - Thinking Out Loud (Acoustic).flac'), t)).toBe(false);
+    expect(matchDoubts(file('m/Band - Perfect (Acoustic).flac'), t)).toEqual(['Artiste absent : Ed Sheeran']);
+    // SoundCloud: the artist of the title, not the uploader
+    const sc = { ...song('Polyamor Records', 'FOVOS - Ya Mama', 300), source: 'soundcloud' };
+    expect(isCertainMatch(file('x/FOVOS - Ya Mama.flac'), sc)).toBe(true);
+  });
+
+  it('spreads downloads over users, FLAC still first', () => {
+    const t = song('Mac Declos', 'Sexiness', 300);
+    const busy = file('a/Mac Declos - Sexiness.flac', { username: 'busy' });
+    const idle = file('b/Mac Declos - Sexiness.flac', { username: 'idle', hasFreeUploadSlot: false });
+    const idleMp3 = file('c/Mac Declos - Sexiness.mp3', { username: 'other', bitRate: 320 });
+    const downloadsWith = (user) => (user === 'busy' ? 4 : 0);
+    expect(certainMatches([busy, idle, idleMp3], t, downloadsWith)).toEqual([idle, busy, idleMp3]);
+    // Only one FLAC: taken even from a busy user
+    expect(certainMatches([busy, idleMp3], t, downloadsWith)[0]).toBe(busy);
   });
 });

@@ -744,6 +744,30 @@ a:hover {
   flex: 1;
 }
 
+.setting-option {
+  margin-top: 20px;
+}
+
+.setting-row label.setting-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-primary);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.setting-checkbox input {
+  accent-color: var(--accent);
+  width: 15px;
+  height: 15px;
+  cursor: pointer;
+}
+
+.setting-option .setting-help {
+  margin: 6px 0 0 23px;
+}
+
 .setting-maintenance {
   margin: 20px 0 0;
   padding-top: 16px;
@@ -1124,12 +1148,73 @@ a:hover {
   background: var(--bg-hover);
 }
 
+.result-file {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
 .result-filename {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   color: var(--text-primary);
 }
+
+/* Why a result is (not) certainly the track */
+.result-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.match-tag {
+  white-space: nowrap;
+}
+
+.match-tag.certain {
+  background: rgba(46, 204, 113, 0.15);
+  color: var(--success);
+}
+
+.match-tag.doubt {
+  background: rgba(243, 156, 18, 0.15);
+  color: var(--warning);
+}
+
+.slskd-result-row.best-match {
+  box-shadow: inset 3px 0 0 var(--success);
+  background: rgba(46, 204, 113, 0.06);
+}
+
+/* Validation: position in the chain and what to do */
+.slskd-queue {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+  padding: 8px 12px;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius);
+  font-size: 13px;
+}
+
+.slskd-queue-position {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.slskd-queue-hint {
+  flex: 1;
+  color: var(--text-muted);
+}
+
+.slskd-queue-hint.certain {
+  color: var(--success);
+}
+
+
 
 /* Soulseek user: status dot + name (search results, downloads) */
 .user-label {
@@ -1154,11 +1239,15 @@ a:hover {
   gap: 4px;
 }
 
-.format-badge {
+.format-badge,
+.match-tag {
   padding: 2px 8px;
   border-radius: 4px;
   font-size: 10px;
   font-weight: 600;
+}
+
+.format-badge {
   text-transform: uppercase;
 }
 
@@ -1243,7 +1332,8 @@ a:hover {
 }
 
 /* ─── Downloads View ─────────────────────────────────────────── */
-.nav-badge {
+.nav-badge,
+.btn-badge {
   background: var(--accent);
   color: white;
   font-size: 10px;

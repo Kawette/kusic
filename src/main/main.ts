@@ -184,6 +184,7 @@ ipcMain.handle(
   (): AppSettings => ({
     spotify: store.get("spotify"),
     soulseek: store.get("soulseek"),
+    autoDownload: store.get("autoDownload"),
   }),
 );
 
@@ -208,6 +209,7 @@ ipcMain.handle("save-settings", async (_, settings: Partial<AppSettings>) => {
     throw new Error("Choisissez le dossier de la bibliothèque avec le bouton Parcourir");
   }
 
+  if (settings.autoDownload !== undefined) store.set("autoDownload", settings.autoDownload === true);
   if (spotify) store.set("spotify", spotify);
   if (soulseek) {
     store.set("soulseek", soulseek);

@@ -1,5 +1,10 @@
 // ─── Shared UI helpers ──────────────────────────────────────
 
+import { formatDuration, isLossless } from './format.js';
+
+// Also used here: imported, then shared from this module like the other helpers
+export { formatDuration, isLossless };
+
 export const api = window.kusic;
 
 export const $ = (sel) => document.querySelector(sel);
@@ -43,10 +48,6 @@ export const SOURCE_LABELS = {
   unknown: 'Inconnu',
 };
 
-const LOSSLESS = ['FLAC', 'WAV', 'AIFF', 'AIF', 'ALAC', 'APE'];
-
-export const isLossless = (format) => LOSSLESS.includes((format || '').toUpperCase());
-
 /** Formats the built-in player can read (keep in sync with MIME in main/library/audio.ts) */
 const PLAYABLE = ['MP3', 'FLAC', 'WAV', 'M4A', 'AAC', 'OGG', 'OPUS'];
 
@@ -87,12 +88,6 @@ export function durationBand(lengthMs, referenceMs) {
 /** Cache key; must stay identical to normalizeQuery in main/search-cache.ts. */
 export function normalizeQuery(query) {
   return query.toLowerCase().trim().replace(/\s+/g, ' ');
-}
-
-export function formatDuration(ms) {
-  if (!ms) return '—';
-  const totalSeconds = Math.round(ms / 1000);
-  return `${Math.floor(totalSeconds / 60)}:${String(totalSeconds % 60).padStart(2, '0')}`;
 }
 
 /** Green when a length matches the reference, orange when clearly another version. */

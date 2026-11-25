@@ -78,10 +78,15 @@
           <div class="view-header">
             <h1 id="tracks-title">Toutes les pistes</h1>
             <div class="view-header-actions">
-              <button class="btn-secondary" id="btn-auto-search" title="Rechercher sur Soulseek les pistes affichées sans fichier (aucun téléchargement automatique)">
+              <button class="btn-secondary" id="btn-auto-search" title="Rechercher sur Soulseek les pistes affichées sans fichier">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3" /></svg>
                 <span id="auto-search-text">Recherche auto</span>
                 <span id="auto-search-status"></span>
+              </button>
+              <button class="btn-secondary" id="btn-validate" title="Choisir à la chaîne un fichier pour chaque piste qui a des résultats en cache">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12" /></svg>
+                À valider
+                <span class="btn-badge" id="validate-count" hidden></span>
               </button>
               <button class="btn-secondary" id="btn-refresh-tracks" title="Synchroniser les playlists">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -253,11 +258,19 @@
                 </div>
               </div>
 
+              <div class="setting-row setting-option">
+                <label class="setting-checkbox">
+                  <input type="checkbox" id="auto-download" />
+                  Téléchargement automatique des correspondances certaines
+                </label>
+                <p class="setting-help">Pendant la recherche auto, une piste est téléchargée sans clic seulement si un fichier a tous ses artistes, son titre et exactement sa version (même remixeur, aucun remix, edit, extended, live… en plus ou en moins), la même durée à 2 s près, et est en FLAC/WAV ou MP3 320. Le FLAC est toujours choisi en premier, puis l'utilisateur chez qui vous avez le moins de téléchargements en cours, pour ne pas tout attendre dans la même file. Les pistes cherchées il y a moins de 15 min sont vérifiées dans le cache ; au-delà, elles sont recherchées à nouveau, car les utilisateurs ont pu se déconnecter ; une piste dont un téléchargement est listé dans l'onglet Téléchargements (en cours, terminé ou en échec) n'est pas touchée. Dans tous les autres cas, la piste reste à choisir à la main.</p>
+              </div>
+
               <!-- Maintenance, rarely used: kept apart from the connection settings -->
               <div class="setting-row setting-maintenance">
                 <label>Cache des recherches</label>
                 <div class="setting-cache-row">
-                  <p class="setting-help">Les résultats Soulseek sont gardés 3 jours pour ne pas relancer les mêmes recherches.</p>
+                  <p class="setting-help">Les résultats Soulseek sont gardés 3 jours pour afficher l'état des pistes. Avant de choisir un fichier à télécharger (fenêtre de recherche, validation, mode auto), ceux de plus de 15 min sont recherchés à nouveau.</p>
                   <button class="btn-secondary" id="btn-clear-search-cache">Vider le cache</button>
                 </div>
               </div>
@@ -331,6 +344,12 @@
           </button>
         </div>
 
+        <div class="slskd-queue" id="slskd-queue" hidden>
+          <span class="slskd-queue-position" id="slskd-queue-position"></span>
+          <span class="slskd-queue-hint" id="slskd-queue-hint"></span>
+          <button class="btn-small btn-accent" id="slskd-queue-skip">Passer →</button>
+        </div>
+
         <div class="slskd-target" id="slskd-target"></div>
 
         <div class="slskd-search-bar">
@@ -354,7 +373,7 @@
             <option value="320">≥ 320 kbps</option>
           </select>
           <select id="result-sort" class="select-control select-small">
-            <option value="duration">Tri : bonne durée, puis qualité</option>
+            <option value="duration">Tri : meilleure correspondance</option>
             <option value="quality">Tri : qualité</option>
             <option value="speed">Tri : vitesse</option>
             <option value="size">Tri : taille</option>

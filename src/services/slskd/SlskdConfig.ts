@@ -51,7 +51,9 @@ export class SlskdConfig {
       transfers: {
         upload: { slots: 5 },
         download: {
-          slots: 10,
+          // A download waiting in a user's queue (for hours sometimes) holds a slot:
+          // once all are taken, new requests are never sent and fail after 180 s
+          slots: 100,
           // Failed downloads are retried and partial files resumed by slskd
           retry: { partial: "resume", attempts: 3, delay: 5000, max_delay: 60000 },
         },

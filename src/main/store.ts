@@ -12,6 +12,7 @@ import type {
 interface SettingsSchema {
   spotify: SpotifyConfig;
   soulseek: SoulseekConfig;
+  autoDownload: boolean;
   /** Key protecting the local slskd API, generated once */
   slskdApiKey: string;
 }
@@ -20,6 +21,7 @@ export const store = new Store<SettingsSchema>({
   defaults: {
     spotify: { clientId: "", clientSecret: "" },
     soulseek: { username: "", password: "", libraryPath: "" },
+    autoDownload: false,
     slskdApiKey: "",
   },
 });
@@ -88,6 +90,8 @@ export interface CachedSearchEntry {
   relevant?: number;
   /** Best format among relevant results, e.g. "FLAC" */
   best?: string;
+  /** Results certainly the track (absent in older entries) */
+  certain?: number;
   timestamp: number;
 }
 

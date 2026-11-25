@@ -19,6 +19,8 @@ let transfers = [];
 let uploads = []; // What others download from us, fetched while that tab is shown
 let mode = 'downloads'; // or 'uploads'
 let byTrack = new Map(); // trackId -> most relevant transfer
+let withTransfer = new Set(); // trackIds of every listed transfer (succeeded and failed too)
+let activeByUser = new Map(); // username -> downloads not finished yet
 let rendered = [];
 let renderedSignature = null;
 
@@ -56,6 +58,34 @@ export function pendingDownloadFor(username, filename) {
   return transfers.some((t) => t.username === username && t.filename === filename && !isFailed(t.state));
 }
 
+/** True if a download of this playlist track is listed (running, failed or finished). */
+export function hasTransferForTrack(trackId) {
+  return withTransfer.has(trackId);
+}
+
+/**
+ * Ask slskd for a file. It counts at once, while the user is contacted, for
+ * hasTransferForTrack (no second download of the track) and activeDownloadsWith
+ * (the next choice of user), until the pushed list has it.
+ */
+export async function requestDownload(username, filename, size, trackId) {
+  const reserved = trackId && !withTransfer.has(trackId);
+  activeByUser.set(username, activeDownloadsWith(username) + 1);
+  if (reserved) withTransfer.add(trackId);
+  try {
+    await api.slskd.download(username, filename, size, trackId);
+  } catch (err) {
+    activeByUser.set(username, Math.max(0, activeDownloadsWith(username) - 1));
+    if (reserved) withTransfer.delete(trackId);
+    throw err;
+  }
+}
+
+/** Our downloads from this user that are not finished (waiting or running). */
+export function activeDownloadsWith(username) {
+  return activeByUser.get(username) || 0;
+}
+
 /** The most relevant transfer for a playlist track (active first, then failed). */
 export function transferForTrack(trackId) {
   return byTrack.get(trackId) || null;
@@ -64,12 +94,20 @@ export function transferForTrack(trackId) {
 function setTransfers(next) {
   transfers = next || [];
   byTrack = new Map();
+  withTransfer = new Set();
+  activeByUser = new Map();
+  let active = 0;
   for (const t of transfers) {
-    if (!t.trackId || isSucceeded(t.state)) continue;
+    if (!isFinished(t.state)) {
+      active++;
+      activeByUser.set(t.username, activeDownloadsWith(t.username) + 1);
+    }
+    if (!t.trackId) continue;
+    withTransfer.add(t.trackId);
+    if (isSucceeded(t.state)) continue;
     const current = byTrack.get(t.trackId);
     if (!current || (isFinished(current.state) && !isFinished(t.state))) byTrack.set(t.trackId, t);
   }
-  const active = transfers.filter((t) => !isFinished(t.state)).length;
   navBadge.textContent = active;
   navBadge.hidden = active === 0;
   if ($('#view-downloads').classList.contains('active')) render();
@@ -208,5 +246,7 @@ api.slskd.onDownloadEvent((event) => {
 });
 
 export async function refreshDownloads() {
-  setTransfers(await api.slskd.getDownloads().catch(() => []));
+  // On error, the known list stays: an empty one would hide every transfer from the auto-search
+  const next = await api.slskd.getDownloads().catch(() => null);
+  if (next) setTransfers(next);
 }

@@ -24,6 +24,8 @@ export function normalizeQuery(query: string): string {
 export interface SearchStats {
   relevant: number;
   best: string;
+  /** Results certainly the track (absent in older entries) */
+  certain?: number;
 }
 
 /** Entries from before relevance stats (built from older, noisier queries) are ignored. */
@@ -66,7 +68,12 @@ export function getCacheSummary(): Record<string, SearchStats & { timestamp: num
   const summary: Record<string, SearchStats & { timestamp: number }> = {};
   for (const [key, entry] of Object.entries(searchCacheIndex.get("searches"))) {
     if (isUsable(entry)) {
-      summary[key] = { relevant: entry.relevant!, best: entry.best ?? "", timestamp: entry.timestamp };
+      summary[key] = {
+        relevant: entry.relevant!,
+        best: entry.best ?? "",
+        certain: entry.certain,
+        timestamp: entry.timestamp,
+      };
     }
   }
   return summary;
