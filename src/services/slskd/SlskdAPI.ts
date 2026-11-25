@@ -179,13 +179,16 @@ export class SlskdAPI {
   }
 
   /**
-   * Ask the remote user for our position in their upload queue. slskd stores
-   * the answer in the transfer (placeInQueue), returned by later polls.
+   * Ask the remote user for our position in their upload queue. slskd also
+   * stores the answer in the transfer (placeInQueue), returned by later polls.
+   * Returns the fresh position (0 if unknown).
    */
-  async refreshPlaceInQueue(username: string, id: string): Promise<void> {
-    await this.client.get(
+  async refreshPlaceInQueue(username: string, id: string): Promise<number> {
+    const { data } = await this.client.get(
       `/api/v0/transfers/downloads/${encodeURIComponent(username)}/${encodeURIComponent(id)}/position`,
     );
+    const place = Number(data);
+    return Number.isSafeInteger(place) && place > 0 ? place : 0;
   }
 
   /** Whether a Soulseek user is online, away or offline. */

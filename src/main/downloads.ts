@@ -12,6 +12,7 @@ import { downloadsStore, type PendingDownload } from "./store.js";
 import type { Library } from "./library/library.js";
 import { listAudioFiles } from "./library/files.js";
 import { isInside, slskdLocalPath } from "./library/naming.js";
+import { addQueueSample, estimateQueue, type QueueEstimate, type QueueSample } from "./queue-estimate.js";
 
 const POLL_INTERVAL = 2000;
 const MAX_ATTEMPTS = 10;
@@ -77,6 +78,8 @@ export class DownloadTracker {
   private lastPushed = "";
   /** Transfer id -> when its queue position was last requested */
   private positionAskedAt = new Map<string, number>();
+  /** Transfer id -> recent places in the remote queue, and the speed they give */
+  private queueStats = new Map<string, { samples: QueueSample[]; estimate?: QueueEstimate }>();
   /** Username -> last known presence and when it was checked */
   private presence = new Map<string, { value: UserPresence; at: number }>();
   /** Single source of truth, written through to downloads.json */
@@ -173,6 +176,8 @@ export class DownloadTracker {
       ...t,
       trackId: this.pending[keyOf(t.username, t.filename)]?.trackId,
       userPresence: isRemotelyQueued(t) ? this.presence.get(t.username)?.value : undefined,
+      queueEstimate: isRemotelyQueued(t) ? this.queueStats.get(t.id)?.estimate : undefined,
+      queueCheck: this.queueCheck(t),
     }));
     this.push(transfers);
 
@@ -180,6 +185,23 @@ export class DownloadTracker {
     await this.processFinished(raw);
     this.pruneStale(raw);
     return transfers;
+  }
+
+  /** When the position was last asked, for the UI's countdown to the next check. */
+  private queueCheck(t: Transfer): Transfer["queueCheck"] {
+    const at = isRemotelyQueued(t) ? this.positionAskedAt.get(t.id) : undefined;
+    return at ? { at, every: REMOTE_QUEUE_INTERVAL } : undefined;
+  }
+
+  /**
+   * Keep the recent places of a download waiting in a remote queue. Only
+   * fresh answers count: the place slskd returns with the transfers can be
+   * minutes old (after a restart), which would fake a sudden jump.
+   */
+  private recordQueuePlace(id: string, place: number): void {
+    const stats = this.queueStats.get(id) ?? { samples: [] };
+    const samples = addQueueSample(stats.samples, place, Date.now());
+    if (samples !== stats.samples) this.queueStats.set(id, { samples, estimate: estimateQueue(samples) });
   }
 
   /**
@@ -193,9 +215,15 @@ export class DownloadTracker {
     for (const t of queued) {
       if (now - (this.positionAskedAt.get(t.id) ?? 0) < REMOTE_QUEUE_INTERVAL) continue;
       this.positionAskedAt.set(t.id, now);
-      api.refreshPlaceInQueue(t.username, t.id).catch(() => {
-        // The remote user may be offline; the last known position is kept
-      });
+      api
+        .refreshPlaceInQueue(t.username, t.id)
+        .then((place) => {
+          // Still waiting (not started or cancelled while asking)
+          if (place && this.positionAskedAt.has(t.id)) this.recordQueuePlace(t.id, place);
+        })
+        .catch(() => {
+          // The remote user may be offline; the last known position is kept
+        });
     }
 
     for (const username of new Set(queued.map((t) => t.username))) {
@@ -211,6 +239,7 @@ export class DownloadTracker {
     // Forget transfers and users that left the remote queues
     const ids = new Set(queued.map((t) => t.id));
     for (const id of this.positionAskedAt.keys()) if (!ids.has(id)) this.positionAskedAt.delete(id);
+    for (const id of this.queueStats.keys()) if (!ids.has(id)) this.queueStats.delete(id);
     const users = new Set(queued.map((t) => t.username));
     for (const user of this.presence.keys()) if (!users.has(user)) this.presence.delete(user);
   }

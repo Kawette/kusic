@@ -148,5 +148,9 @@ export interface Transfer {
   placeInQueue?: number;
   /** Whether the remote user is connected (checked while we wait in their queue) */
   userPresence?: UserPresence;
+  /** Speed of the remote queue (measured while we wait in it, after a few minutes) */
+  queueEstimate?: { rate: number; eta?: number };
+  /** Last check of the queue position and how often it is checked (ms) */
+  queueCheck?: { at: number; every: number };
   trackId?: string;
 }

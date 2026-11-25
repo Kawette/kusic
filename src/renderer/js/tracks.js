@@ -8,7 +8,7 @@ import {
 import {
   cachedStats, isSearching, openSearch, openValidation, toggleAutoSearch, validationQueue,
 } from './search.js';
-import { isFinished, isTransferring, transferForTrack, waitingLabel } from './downloads.js';
+import { isFinished, isTransferring, queueWait, transferForTrack, waitingLabel } from './downloads.js';
 import { openIdentify } from './identify.js';
 import { isPlaying, playTrack } from './player.js';
 
@@ -133,7 +133,10 @@ function statusHtml(track) {
     }
     if (searching) return searchButton;
     // A source is chosen: the download button says so, the details are in the downloads view
-    const state = isTransferring(transfer) ? `en cours (${pct} %)` : waitingLabel(transfer).toLowerCase();
+    const wait = queueWait(transfer);
+    const state = isTransferring(transfer)
+      ? `en cours (${pct} %)`
+      : `${waitingLabel(transfer).toLowerCase()}${wait ? `, attente estimée ${wait}` : ''}`;
     return `<button class="track-download-btn" data-action="download" title="Téléchargement ${escapeHtml(state)} · cliquer pour choisir une autre source">${icon(ICONS.clock, 16)}</button>`;
   }
   if (transfer) {

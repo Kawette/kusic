@@ -6,6 +6,7 @@ import {
   $, api, baseName, bus, escapeHtml, formatSize, formatSpeed, icon, ICONS, showToast, toastError,
   userLabel,
 } from './ui.js';
+import { formatQueueRate, formatWait } from './format.js';
 
 const list = $('#download-view-list');
 const emptyState = $('#downloads-empty');
@@ -39,6 +40,58 @@ export function waitingLabel(t) {
   return 'En attente';
 }
 
+/** Expected wait in a remote queue ("~25 min"), once the main process measured its speed. */
+export function queueWait(t) {
+  return isRemotelyQueued(t) && t.queueEstimate?.eta ? formatWait(t.queueEstimate.eta) : '';
+}
+
+/**
+ * Ring filling up until the next check of the queue position (once a minute),
+ * then starting over. Rows are often rebuilt: a negative delay keeps it in step.
+ */
+function queueCountdown(check) {
+  if (!check) return '';
+  const elapsed = Math.min(Math.max(Date.now() - check.at, 0), check.every);
+  return `<svg class="dl-queue-countdown" viewBox="0 0 12 12" aria-hidden="true">
+    <circle class="track" cx="6" cy="6" r="4.5" />
+    <circle class="fill" cx="6" cy="6" r="4.5" pathLength="100"
+      style="animation-duration: ${check.every}ms; animation-delay: -${elapsed}ms" />
+  </svg>`;
+}
+
+/** Speed of a remote queue: text and tooltip. */
+function queueSpeed(estimate) {
+  if (!estimate) {
+    return {
+      text: '',
+      title: 'Vitesse de la file : la position est vérifiée une fois par minute, première estimation après deux vérifications',
+    };
+  }
+  const since = 'depuis la première vérification (30 dernières minutes au plus)';
+  // Green when moving up the queue, red when others get ahead of us
+  const trend = estimate.rate > 0 ? 'gaining' : estimate.rate < 0 ? 'losing' : '';
+  const rate = `<span class="dl-queue-rate ${trend}">${formatQueueRate(estimate.rate)}</span>`;
+  if (estimate.rate < 0) {
+    return { text: rate, title: `Places perdues ${since} : des utilisateurs sont passés devant vous` };
+  }
+  if (!estimate.rate) return { text: rate, title: `Aucune place gagnée ${since}` };
+  return {
+    text: `${rate} · ${formatWait(estimate.eta)}`,
+    title: `Places gagnées ${since}, et attente estimée à ce rythme`,
+  };
+}
+
+/** Place and speed in a remote queue, shown where the progress bar goes once the transfer starts. */
+function queueProgress(t) {
+  // Always grouped: "1 708", not "1708" (French Intl only groups from 5 digits)
+  const place = `${String(t.placeInQueue).replace(/\B(?=(\d{3})+$)/g, '\u202f')}`;
+  const { text, title } = queueSpeed(t.queueEstimate);
+  return `<span class="dl-queue" title="Position ${place} dans la file de cet utilisateur · ${escapeHtml(title)} · le cercle se remplit jusqu'à la prochaine vérification">
+    <span class="dl-queue-place">Position : <strong>${place}</strong></span>
+    <span class="dl-queue-speed">${queueCountdown(t.queueCheck)}${text}</span>
+  </span>`;
+}
+
 // Known only while we wait in the user's queue (checked by the main process)
 const PRESENCE_LABELS = { online: 'En ligne', away: 'Absent', offline: 'Hors ligne' };
 
@@ -50,6 +103,8 @@ function stateDisplay(t) {
   if (s.includes('rejected')) return { label: 'Refusé', cls: 'state-error' };
   if (s.includes('completed')) return { label: 'Erreur', cls: 'state-error' };
   if (isTransferring(t)) return { label: 'En cours', cls: 'state-active' };
+  // The place is shown in the progress column, with the queue speed
+  if (isRemotelyQueued(t)) return { label: 'En file', cls: 'state-queued' };
   return { label: waitingLabel(t), cls: 'state-queued' };
 }
 
@@ -152,7 +207,10 @@ export function render() {
     const failedRow = isFailed(t.state);
     const presence = isRemotelyQueued(t) && t.userPresence ? t.userPresence : '';
     const sizeText = running ? `${formatSize(t.bytesTransferred)} / ${formatSize(t.size)}` : formatSize(t.size);
-    const progress = running
+    // Waiting in a remote queue: its speed replaces the (empty) progress bar
+    const progress = isRemotelyQueued(t) && t.placeInQueue
+      ? queueProgress(t)
+      : running
       ? `<span class="dl-speed">${t.averageSpeed > 0 ? formatSpeed(t.averageSpeed) : '—'}</span><div class="dl-progress-bar"><div class="dl-progress-fill" style="width: ${pct}%"></div></div><span class="dl-pct">${pct}%</span>`
       : '';
     // Uploads are only shown: slskd manages them
@@ -167,8 +225,8 @@ export function render() {
       <span class="dl-col-name" title="${escapeHtml(t.filename)}">${escapeHtml(baseName(t.filename))}</span>
       <span class="dl-col-user">${userLabel(t.username, presence, PRESENCE_LABELS[presence])}</span>
       <span class="dl-col-size">${sizeText}</span>
-      <span class="dl-col-progress">${progress}</span>
       <span class="dl-col-state ${cls}" title="${escapeHtml(label)}">${escapeHtml(label)}</span>
+      <span class="dl-col-progress">${progress}</span>
       <span class="dl-col-actions">${actions || ''}</span>
     </div>`;
   }).join('');
