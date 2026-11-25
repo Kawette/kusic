@@ -389,6 +389,10 @@ ipcMain.handle(
       remove,
     }: { username: string; id: string; filename: string; remove: boolean },
   ) => {
+    const listed = downloads.listed(id);
+    if (remove && listed && downloads.isPlacing(listed)) {
+      throw new Error("Fichier en cours de rangement dans la bibliothèque : réessayez dans un instant");
+    }
     await slskd.getAPI().cancelDownload(username, id, remove);
     if (remove) downloads.forget(username, filename);
     await downloads.refresh();
@@ -417,7 +421,7 @@ ipcMain.handle("slskd-clear-downloads", async (_, kind: "succeeded" | "failed") 
       /completed/i.test(t.state) &&
       isSucceeded(t.state) === (kind === "succeeded") &&
       // Keep succeeded downloads that are not placed in the library yet
-      !(kind === "succeeded" && downloads.isPending(t.username, t.filename)),
+      !downloads.isPlacing(t),
   );
   await Promise.all(finished.map((t) => api.cancelDownload(t.username, t.id, true)));
   if (kind === "failed") finished.forEach((t) => downloads.forget(t.username, t.filename));

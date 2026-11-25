@@ -97,6 +97,7 @@ export class DownloadTracker {
   /** The poll that follows the running one, shared by the callers meanwhile */
   private nextPoll: Promise<Transfer[]> | null = null;
   private lastPushed = "";
+  private lastList: Transfer[] = [];
   /** Transfer id -> when its queue position was last requested */
   private positionAskedAt = new Map<string, number>();
   /** Transfer id -> recent places in the remote queue, and the speed they give */
@@ -163,6 +164,16 @@ export class DownloadTracker {
     return !!entry && entry.attempts < MAX_ATTEMPTS;
   }
 
+  /** Downloaded but not tagged and placed yet: removing it from slskd's list would lose it. */
+  isPlacing(t: { username: string; filename: string; state: string }): boolean {
+    return isSucceeded(t.state) && this.isPending(t.username, t.filename);
+  }
+
+  /** A transfer of the last polled list, by id. */
+  listed(id: string): Transfer | undefined {
+    return this.lastList.find((t) => t.id === id);
+  }
+
   /** Give a failed placement another round of attempts (on retry). */
   resetAttempts(username: string, filename: string): void {
     const entry = this.pending[keyOf(username, filename)];
@@ -194,6 +205,7 @@ export class DownloadTracker {
 
   /** Send the list to the UI only when something changed. */
   private push(transfers: Transfer[]): void {
+    this.lastList = transfers;
     const serialized = JSON.stringify(transfers);
     if (serialized === this.lastPushed) return;
     this.lastPushed = serialized;
@@ -218,7 +230,7 @@ export class DownloadTracker {
         ...t,
         ...(isInterrupted(r) && (resuming ? { state: "Resuming" } : { interrupted: true })),
         // Downloaded but not filed yet: removing it from slskd's list would lose it
-        ...(isSucceeded(t.state) && this.isPending(t.username, t.filename) && { placing: true }),
+        ...(this.isPlacing(t) && { placing: true }),
         trackId: this.pending[keyOf(t.username, t.filename)]?.trackId,
         userPresence: queued ? this.presence.get(t.username)?.value : undefined,
         queueEstimate: queued ? this.queueStats.get(t.id)?.estimate : undefined,
